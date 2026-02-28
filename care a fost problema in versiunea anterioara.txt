@@ -1,0 +1,13 @@
+Problema și soluția
+Problema: Pe PC-ul tău, tasklist și taskkill se blochează (hang indefinit, nu mai returnează).
+
+Batch-ul original ajungea la tasklist | findstr "firefox" → se bloca → nu mai ajungea niciodată la taskkill → Python nu pornea niciodată.
+
+Soluția: Am înlocuit toate apelurile tasklist/taskkill cu PowerShell (Get-Process / Stop-Process -Force) care funcționează perfect pe PC-ul tău — echivalentul exact al "End Task" din Task Manager.
+
+Fișiere modificate:
+
+kill_firefox.ps1 — fișier nou cu toată logica de kill Firefox/geckodriver + curățare lock-uri profil
+Run_PDF_Downloader.bat — apelează kill_firefox.ps1 într-o singură linie (în loc de comenzi inline multi-line care crăpau batch-ul)
+Claude-FINAL 15 - BUN Sterge pdf pe G Firefox.py — 3 funcții rescrise (kill_firefox_and_geckodriver_at_start, kill_existing_firefox, kill_all_firefox_instances) + 2 helper-e noi (_ps_get_process_count, _ps_stop_process) + 55 smart quotes corectate
+
