@@ -128,13 +128,13 @@ def issue_is_complete(entry):
     return entry is not None and bool(entry.get("completed_at"))
 
 
-def upsert_issue(state, view_url, title, pages, total_pages, last_idx, completed=False):
+def upsert_issue(state, view_url, title, pages, total_pages, last_idx, completed=False, pdf=None):
     u = issue_url_norm(view_url)
     entry = get_issue(state, view_url)
     if entry is None:
         entry = {}
         state["downloaded_issues"].append(entry)
-    # ordine ca in exemplu: url, title, pages, completed_at, last_successful_segment_end, total_pages
+    # ordine ca in exemplu + campul "pdf" (calea PDF-ului facut)
     entry.clear()
     entry["url"] = u
     entry["title"] = title
@@ -142,6 +142,7 @@ def upsert_issue(state, view_url, title, pages, total_pages, last_idx, completed
     entry["completed_at"] = datetime.now().isoformat(timespec="seconds") if completed else None
     entry["last_successful_segment_end"] = last_idx
     entry["total_pages"] = total_pages
+    entry["pdf"] = pdf
     save_state(state)
     return entry
 
@@ -424,9 +425,16 @@ def capture_document(br, view_url, stage_dir, state):
             wait_for_page_image(drv, timeout=30)
             return drv.execute_async_script(JS_GRAB_BLOB)
 
-        res = retry_browser(br, _capture, f"pagina {pg} din {name}")
+        res = None
+        for attempt in range(3):
+            res = retry_browser(br, _capture, f"pagina {pg} din {name}")
+            if res and res.get("ok"):
+                break
+            print(f"   pg {pg:04d}: fetch nereusit (incercare {attempt + 1}/3), reincerc...")
+            time.sleep(2)
         if not res or not res.get("ok"):
-            print(f"   pg {pg:04d}: ESEC ({res.get('err') if res else 'None'})")
+            print(f"   pg {pg:04d}: ESEC final ({res.get('err') if res else 'None'}) - "
+                  f"se reia la urmatoarea rulare")
             continue
         ct = res.get("ct", "")
         ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}.get(ct, "jpg")
@@ -512,11 +520,15 @@ def main():
 
             for view_url in docs:
                 name = doc_name(view_url)
+                pdf_path = os.path.join(G_ROOT, cname, name + ".pdf")
                 entry = get_issue(state, view_url)
-                if issue_is_complete(entry):
-                    print(f"\n=== DOCUMENT {name}: deja complet "
-                          f"({entry['pages']}/{entry['total_pages']}), sar ===")
+
+                # COMPLET = marcat in state.json SI PDF-ul chiar exista pe disc
+                if issue_is_complete(entry) and os.path.exists(pdf_path):
+                    print(f"\n=== DOCUMENT {name}: deja complet + PDF exista, sar ===")
                     continue
+                if issue_is_complete(entry) and not os.path.exists(pdf_path):
+                    print(f"\n=== DOCUMENT {name}: marcat complet DAR PDF lipseste -> il refac ===")
 
                 stage_dir = os.path.join(TEMP_ROOT, cname, name)
                 info = capture_document(br, view_url, stage_dir, state)
@@ -526,12 +538,12 @@ def main():
                 if info["complete"]:
                     # toate paginile sunt pe disc -> incercam PDF-ul
                     files = collect_page_files(stage_dir)
-                    pdf_path = os.path.join(G_ROOT, cname, name + ".pdf")
                     if build_pdf(files, pdf_path, info["total_pages"]):
                         # marcam COMPLET doar daca PDF-ul s-a facut cu succes
                         upsert_issue(state, view_url, info["title"], info["pages_done"],
-                                     info["total_pages"], info["total_pages"] - 1, completed=True)
-                        print(f"   [state] COMPLET {info['pages_done']}/{info['total_pages']}")
+                                     info["total_pages"], info["total_pages"] - 1,
+                                     completed=True, pdf=pdf_path)
+                        print(f"   [state] COMPLET {info['pages_done']}/{info['total_pages']}  PDF OK")
                         print(f"   ... pauza {PDF_WAIT}s (PDF) ...")
                         time.sleep(PDF_WAIT)
                     else:
