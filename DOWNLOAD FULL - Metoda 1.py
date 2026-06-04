@@ -30,7 +30,7 @@ import glob
 import base64
 import shutil
 import tempfile
-from datetime import datetime, date
+from datetime import datetime, date, time as dtime
 
 # consola Windows e cp1252 -> titlurile cu ș/ţ/etc ar crapa la print
 try:
@@ -60,8 +60,12 @@ G_ROOT     = "G:\\"                                       # PDF-urile finale: G:
 TEMP_ROOT  = r"g:\Temporare"                              # imaginile (staging): g:\Temporare\<Colectie>\<Document>\
 STATE_PATH = r"d:\TEST\arcanum_capture\state.json"        # resume
 
-PAGE_WAIT = 5      # secunde de asteptare intre pagini (cerinta)
+PAGE_WAIT = 4      # secunde de asteptare intre pagini (cerinta)
 PDF_WAIT  = 120    # 2 minute pauza dupa PDF-ul fiecarui document
+
+# inchidere automata in fereastra 03:40 - 04:00 (la 04:00 porneste celalalt script)
+SHUTDOWN_START = dtime(3, 40)
+SHUTDOWN_END   = dtime(4, 0)
 
 # --- mod test (dezactivat: rulam complet pe toate colectiile) ---
 TEST_MODE      = False  # False = rulare completa pe toate documentele/paginile
@@ -77,6 +81,20 @@ SKIP_DIRS = {
     "security_state", "settings", "gmp", "gmp-gmpopenh264", "gmp-widevinecdm",
 }
 IMG_EXT = ("jpg", "png", "webp")
+
+
+class ScheduledStop(Exception):
+    """Oprire programata (fereastra 03:40-04:00)."""
+
+
+def in_shutdown_window():
+    now = datetime.now().time()
+    return SHUTDOWN_START <= now < SHUTDOWN_END
+
+
+def check_schedule():
+    if in_shutdown_window():
+        raise ScheduledStop()
 
 
 # ----------------------- state / resume -----------------------
@@ -409,6 +427,7 @@ def capture_document(br, view_url, stage_dir, state):
     pages_done = 0
     last_idx = -1
     for pg in range(total):
+        check_schedule()   # oprire automata 03:40-04:00
         # RESUME: pagina deja salvata -> sarim (dar o numaram)
         ex = existing_page_file(stage_dir, pg)
         if ex:
@@ -488,14 +507,63 @@ def build_pdf(image_paths, pdf_path, total_pages):
     return True
 
 
+def finalize_pending_pdfs(state):
+    """La pornire: pentru orice document cu imaginile complete dar fara PDF, face PDF-ul.
+    Nu are nevoie de browser - lucreaza doar de pe disc + total_pages din state.json.
+    Asa nu se mai pierde niciun PDF chiar daca oprești des aplicatia."""
+    print("Verific PDF-uri restante (imagini complete dar fara PDF)...")
+    totals, entries_by_name = {}, {}
+    for e in state["downloaded_issues"]:
+        nm = e.get("url", "").rstrip("/").split("/")[-1]
+        totals[nm] = e.get("total_pages", 0)
+        entries_by_name[nm] = e
+    if not os.path.isdir(TEMP_ROOT):
+        return
+    facute = 0
+    for cname in sorted(os.listdir(TEMP_ROOT)):
+        cdir = os.path.join(TEMP_ROOT, cname)
+        if not os.path.isdir(cdir):
+            continue
+        for name in sorted(os.listdir(cdir)):
+            stage = os.path.join(cdir, name)
+            if not os.path.isdir(stage):
+                continue
+            tot = totals.get(name, 0)
+            files = collect_page_files(stage)
+            if not tot or len(files) < tot:
+                continue  # incomplet -> il termina bucla de download
+            pdf_path = os.path.join(G_ROOT, cname, name + ".pdf")
+            if os.path.exists(pdf_path):
+                continue  # deja are PDF
+            check_schedule()
+            print(f"  [finalize] {cname}/{name}: {len(files)}/{tot} imagini, PDF lipsa -> il fac acum")
+            if build_pdf(files, pdf_path, tot):
+                e = entries_by_name.get(name)
+                if e is not None:
+                    e["completed_at"] = datetime.now().isoformat(timespec="seconds")
+                    e["pdf"] = pdf_path
+                    save_state(state)
+                facute += 1
+    print(f"Finalize: {facute} PDF-uri restante create." if facute else "Finalize: niciun PDF restant.")
+
+
 def main():
-    print("Login: copiez profilul Firefox activ (Firefox-ul tau ramane deschis)...")
     state = load_state()
+
+    # 1) intai facem PDF-urile restante (imagini complete dar fara PDF), fara browser
+    try:
+        finalize_pending_pdfs(state)
+    except ScheduledStop:
+        print("\n[oprire programata 03:40-04:00] inchid aplicatia.")
+        return
+
+    print("Login: copiez profilul Firefox activ (Firefox-ul tau ramane deschis)...")
     br = Browser()
     try:
         br.start()
 
         for coll_url in ADDITIONAL_COLLECTIONS:
+            check_schedule()
             cname = collection_name(coll_url)
             print(f"\n########## COLECTIE: {cname}  ({coll_url}) ##########")
 
@@ -519,6 +587,7 @@ def main():
                 print(f"  [TEST] procesez doar primele {len(docs)} document(e)")
 
             for view_url in docs:
+                check_schedule()
                 name = doc_name(view_url)
                 pdf_path = os.path.join(G_ROOT, cname, name + ".pdf")
                 entry = get_issue(state, view_url)
@@ -554,6 +623,9 @@ def main():
                           f"- PDF-ul se va face cand documentul e gata")
 
         print("\nGATA.")
+    except ScheduledStop:
+        print("\n[oprire programata 03:40-04:00] inchid aplicatia (state.json salvat). "
+              "La 04:00 porneste celalalt script.")
     except KeyboardInterrupt:
         print("\n[oprit manual] progresul e salvat in state.json - reia de aici la repornire.")
     except WebDriverException as e:
