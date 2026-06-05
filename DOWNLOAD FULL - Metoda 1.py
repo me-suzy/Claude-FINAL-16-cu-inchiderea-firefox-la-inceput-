@@ -50,10 +50,30 @@ from PIL import Image
 
 # ======================= CONFIG =======================
 ADDITIONAL_COLLECTIONS = [
-    "https://adt.arcanum.com/ro/collection/FilmeNoi/",
-    "https://adt.arcanum.com/ro/collection/ITTrends/",
+    # "https://adt.arcanum.com/ro/collection/FilmeNoi/",
+    # "https://adt.arcanum.com/ro/collection/ITTrends/",
     "https://adt.arcanum.com/ro/collection/SzatmariMuzeumKiadvanyai_Evkonyv_ADT/",
     "https://adt.arcanum.com/ro/collection/Afirmarea/",
+    "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/",
+    "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=1990#collection-contents",
+    "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2000#collection-contents",
+    "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2010#collection-contents",
+    "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2020#collection-contents",
+    "https://adt.arcanum.com/ro/collection/Timpul/",
+    "https://adt.arcanum.com/ro/collection/Timpul/?decade=2000#collection-contents",
+    "https://adt.arcanum.com/ro/collection/Carpatii/",
+    "https://adt.arcanum.com/ro/collection/CurierulRecreatiilorIntelectuale/",
+    "https://adt.arcanum.com/ro/collection/RadioRomania/",
+    "https://adt.arcanum.com/ro/collection/RevistaVanatorilor/",
+    "https://adt.arcanum.com/ro/collection/CurierulFinanciar/",
+    "https://adt.arcanum.com/ro/collection/EWeekRomania/",
+    "https://adt.arcanum.com/ro/collection/EvenimentulSibian/",
+    "https://adt.arcanum.com/ro/collection/EvenimentulSibian/?decade=2000#collection-contents",
+    "https://adt.arcanum.com/ro/collection/NazuintaZilah/",
+    "https://adt.arcanum.com/ro/collection/NazuintaZilah/?decade=1970#collection-contents",
+    "https://adt.arcanum.com/ro/collection/NazuintaZilah/?decade=1980#collection-contents",
+    "https://adt.arcanum.com/ro/collection/RevistaIstoricaRomana/",
+
 ]
 
 G_ROOT     = "G:\\"                                       # PDF-urile finale: G:\<Colectie>\<Document>.pdf
@@ -196,15 +216,74 @@ def copy_profile(src):
         d = os.path.join(dst, name)
         try:
             shutil.copy2(s, d)
-        except Exception:
+        except Exception as e:
+            print(f"     ({name}: copy2 a esuat - {e}; incerc citire bruta)")
             try:
                 with open(s, "rb") as fh:
                     data = fh.read()
                 with open(d, "wb") as fh:
                     fh.write(data)
-            except Exception:
-                pass
+            except Exception as e2:
+                print(f"     ({name}: sarit - {e2})")
     return dst
+
+
+def _gecko_service():
+    # fixam calea geckodriver ca Selenium sa NU mai porneasca Selenium Manager (care poate atinge reteaua si bloca)
+    path = shutil.which("geckodriver") or r"C:\Windows\geckodriver.exe"
+    try:
+        if os.path.exists(path):
+            print(f"   geckodriver: {path}")
+            return FirefoxService(executable_path=path)
+    except Exception as e:
+        print(f"   (nu pot fixa geckodriver explicit: {e})")
+    return FirefoxService()
+
+
+def _firefox_binary():
+    cands = [
+        r"C:\Program Files\Mozilla Firefox\firefox.exe",
+        r"C:\Program Files (x86)\Mozilla Firefox\firefox.exe",
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Mozilla Firefox\firefox.exe"),
+    ]
+    for c in cands:
+        if c and os.path.exists(c):
+            return c
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\firefox.exe") as k:
+            val, _ = winreg.QueryValueEx(k, None)
+            if val and os.path.exists(val):
+                return val
+    except Exception:
+        pass
+    return None
+
+
+def cleanup_stale_automation():
+    """Curata procesele de automatizare ramase din rulari anterioare (crapate/oprite),
+    ca sa nu mai fie nevoie de RESTART la PC. NU atinge Firefox-ul normal al userului:
+    omoara doar firefox.exe lansat cu profilul nostru temporar 'ff_dl1_' + toate geckodriver."""
+    print("Curat geckodriver + Firefox de automatizare ramase (NU si Firefox-ul tau normal)...")
+    try:
+        import subprocess
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        # /T omoara si procesele-copil (Firefox-ul de automatizare pornit de geckodriver);
+        # Firefox-ul tau normal NU e copil de geckodriver, deci ramane neatins.
+        subprocess.run(["taskkill", "/F", "/T", "/IM", "geckodriver.exe"],
+                       timeout=15, capture_output=True, creationflags=flags)
+    except Exception as e:
+        print(f"   (taskkill geckodriver: {e})")
+    # sterge profilele temporare vechi (nu mai sunt folosite)
+    removed = 0
+    for d in glob.glob(os.path.join(tempfile.gettempdir(), "ff_dl1_*")):
+        try:
+            shutil.rmtree(d, ignore_errors=True)
+            removed += 1
+        except Exception:
+            pass
+    print(f"   curatat. (profile temporare vechi sterse: {removed})")
 
 
 def start_firefox(profile_dir):
@@ -216,9 +295,17 @@ def start_firefox(profile_dir):
     opts.set_preference("browser.tabs.remote.autostart", False)
     opts.set_preference("general.useragent.override",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:115.0) Gecko/20100101 Firefox/115.0")
-    drv = webdriver.Firefox(options=opts, service=FirefoxService())
+    binpath = _firefox_binary()
+    if binpath:
+        opts.binary_location = binpath
+        print(f"   Firefox binar: {binpath}")
+    else:
+        print("   (nu am gasit firefox.exe explicit; las geckodriver sa caute)")
+    print("   lansez Firefox prin geckodriver (poate dura 5-15s)...")
+    drv = webdriver.Firefox(options=opts, service=_gecko_service())
     drv.set_window_size(1500, 1200)
     drv.set_script_timeout(60)
+    print("   Firefox a pornit cu succes.")
     return drv
 
 
@@ -229,7 +316,13 @@ class Browser:
         self.tmp = None
 
     def start(self):
-        self.tmp = copy_profile(find_active_profile())
+        t = time.time()
+        print("   caut profilul Firefox activ...")
+        src = find_active_profile()
+        print(f"   profil sursa: {src}")
+        print("   copiez fisierele de login (cateva MB)...")
+        self.tmp = copy_profile(src)
+        print(f"   profil copiat in {time.time() - t:.1f}s -> {self.tmp}")
         self.drv = start_firefox(self.tmp)
 
     def quit(self):
@@ -492,6 +585,39 @@ def build_pdf(image_paths, pdf_path, total_pages):
     if not image_paths:
         print("   (fara imagini, nu fac PDF)")
         return False
+    # verificare rapida: toate prezente si non-goale (fara a le decoda)
+    for p in image_paths:
+        if not os.path.exists(p) or os.path.getsize(p) < 1024:
+            print(f"   !! pagina lipsa/mica: {os.path.basename(p)} - NU fac PDF acum")
+            return False
+
+    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+    tmp = pdf_path + ".part"
+
+    # 1) img2pdf = inglobeaza JPEG-urile direct, FARA decodare -> memorie/CPU minime
+    try:
+        import img2pdf
+        try:
+            layout = img2pdf.get_fixed_dpi_layout_fun((200, 200))  # pagini la 200 DPI
+        except Exception:
+            layout = None
+        for attempt in range(3):
+            try:
+                with open(tmp, "wb") as f:
+                    if layout:
+                        f.write(img2pdf.convert(image_paths, layout_fun=layout))
+                    else:
+                        f.write(img2pdf.convert(image_paths))
+                os.replace(tmp, pdf_path)
+                print(f"   PDF salvat (img2pdf): {pdf_path}  ({len(image_paths)} pagini)")
+                return True
+            except Exception as e:
+                print(f"   img2pdf incercare {attempt + 1}/3 esuata: {str(e)[:120]}")
+                time.sleep(2)
+    except Exception as e:
+        print(f"   (img2pdf indisponibil: {e}) - folosesc PIL")
+
+    # 2) fallback PIL (decodeaza in memorie - mai greu)
     imgs = []
     for p in image_paths:
         im = open_image_robust(p)
@@ -499,11 +625,9 @@ def build_pdf(image_paths, pdf_path, total_pages):
             print("   !! NU fac PDF (o pagina e ilizibila) - se reincearca la urmatoarea rulare")
             return False
         imgs.append(im)
-    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
-    tmp = pdf_path + ".part"
     imgs[0].save(tmp, "PDF", resolution=200.0, save_all=True, append_images=imgs[1:])
     os.replace(tmp, pdf_path)
-    print(f"   PDF salvat: {pdf_path}  ({len(imgs)} pagini)")
+    print(f"   PDF salvat (PIL): {pdf_path}  ({len(imgs)} pagini)")
     return True
 
 
@@ -528,6 +652,9 @@ def finalize_pending_pdfs(state):
             stage = os.path.join(cdir, name)
             if not os.path.isdir(stage):
                 continue
+            e = entries_by_name.get(name)
+            if e is not None and e.get("completed_at"):
+                continue  # deja finalizat in json -> nu reface (poate userul a sters PDF-ul intentionat)
             tot = totals.get(name, 0)
             files = collect_page_files(stage)
             if not tot or len(files) < tot:
@@ -556,6 +683,8 @@ def main():
     except ScheduledStop:
         print("\n[oprire programata 03:40-04:00] inchid aplicatia.")
         return
+
+    cleanup_stale_automation()   # ca sa nu mai fie nevoie de restart la PC dupa multe rulari
 
     print("Login: copiez profilul Firefox activ (Firefox-ul tau ramane deschis)...")
     br = Browser()
@@ -592,12 +721,11 @@ def main():
                 pdf_path = os.path.join(G_ROOT, cname, name + ".pdf")
                 entry = get_issue(state, view_url)
 
-                # COMPLET = marcat in state.json SI PDF-ul chiar exista pe disc
-                if issue_is_complete(entry) and os.path.exists(pdf_path):
-                    print(f"\n=== DOCUMENT {name}: deja complet + PDF exista, sar ===")
+                # COMPLET = finalizat in json (completed_at e setat DOAR dupa un PDF facut cu succes).
+                # Daca e in json ca finalizat -> SKIP, chiar daca userul a sters PDF-ul (l-a urcat pe archive.org).
+                if issue_is_complete(entry):
+                    print(f"\n=== DOCUMENT {name}: deja finalizat in json, sar ===")
                     continue
-                if issue_is_complete(entry) and not os.path.exists(pdf_path):
-                    print(f"\n=== DOCUMENT {name}: marcat complet DAR PDF lipseste -> il refac ===")
 
                 stage_dir = os.path.join(TEMP_ROOT, cname, name)
                 info = capture_document(br, view_url, stage_dir, state)
