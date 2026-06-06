@@ -1,0 +1,219 @@
+ANALIZA 4 — ENTITATI — corpus_exemplu.txt
+
+
+=== LOCURI (geo-politic) (GPE) ===
+11	Cluj
+11	Carei
+11	Baia Mare
+8	Satu Mare
+7	Sighet
+6	Ungaria
+6	Tg.
+5	României
+5	Germania
+5	Viena
+5	Oradea
+5	Transilvaniei
+4	Seini
+3	Cămărzana
+2	Curtuişeni
+
+=== PERSOANE (PERSON) ===
+8	comuniștii
+7	muncitorii
+5	locuitori
+4	Carei
+4	cetățeni
+4	muncitori
+3	persoane
+3	Muncitorii
+3	delegat
+2	copiii
+2	maselor
+2	Odorhei
+2	Aleșd
+2	comuniști
+2	Ele
+
+=== DATE (DATETIME) ===
+5	4 ani
+3	1944
+2	vara anului 1941
+2	anul 1943
+2	anului 1941
+2	Acum
+2	1943
+2	septembrie
+2	luna septembrie 1944
+2	primăvara anului 1944
+1	8.05.1970
+1	1940—25 octombrie 1944
+1	sec
+1	1918
+1	1923—1928
+
+=== NUMERIC_VALUE (NUMERIC_VALUE) ===
+5	4
+5	2
+4	1
+3	3
+2	15
+2	186
+2	16
+2	8
+2	40
+2	trei
+2	11
+2	12
+2	14 000
+2	14
+2	doi
+
+=== ORGANIZATION (ORGANIZATION) ===
+4	Satu-Mare
+4	Dej
+3	P.C.R.
+3	Negrești
+3	Bixad
+2	Comitetului Central al P.C.R.
+2	P.C.U.
+2	Zalău
+2	SatuMare
+2	Ardealul cotropit
+1	MUZEUL
+1	SAIU MARE
+
+Studii
+1	Planşe tipar
+1	INHALT
+1	SOMMAIRE
+
+=== natiune/religie/politic (NAT_REL_POL) ===
+12	români
+8	maghiari
+6	românească
+5	române
+3	evrei
+3	partizani
+2	român
+2	românilor
+2	maghiar
+2	germane
+2	evreu
+2	pină
+1	Grabfund des
+1	italian
+1	română
+
+=== LOCURI (LOC) ===
+24	nordul Transilvaniei
+9	Satu-Mare
+3	Nordul Transilvaniei
+2	Munţii
+1	str. Moscovei nr. 5
+1	Turulung
+1	Unimăt
+1	Descoperiri
+1	judeţul Satu Mare
+1	Oraşul-Nou
+1	Dictatului
+1	strada Gheorgheni
+1	nordul Transilvaniei o luptă
+1	Valea Mureșului
+1	Mureșului
+
+=== PRODUCT (PRODUCT) ===
+2	horthystă
+1	Dacia
+1	mormînt
+1	bogăţiile naturale
+1	minereu neferos
+1	produselor cerealiere și animale
+1	îmbrăcăminte
+1	încălțăminte
+1	țurilor
+1	Negreşti
+1	organelor fasciste
+1	pină
+1	mașinile
+1	mijloacele puterea economică
+1	Baraolt
+
+=== FACILITY (FACILITY) ===
+2	secretariatul
+1	MUZEUL DE ISTORIE SATU-MARE
+
+gi, A
+1	Provinz
+Dazien
+1	Ungariei horthyste
+1	casa
+1	unități
+1	frontieră
+1	Maramureşului şi falnicii
+1	Comisariatul Central al Refugiaţilor
+1	militare.8
+
+Nivelul de viață
+1	biserica
+1	nordului
+Transilvaniei
+1	Maramureşului
+1	La
+1	centrele muncitorești și comunale mai lăturalnice
+
+=== MONEY (MONEY) ===
+1	1969 CCC A
+1	1969
+
+Mt
+
+Redactor
+1	5
+
+CUPRINS
+1	85
+"Tombeaux hallstattienne tard de
+1	2,6 milioane
+1	2 miliarde
+lei
+1	3 miliarde lei
+1	5 miliarde lei
+1	60 miliarde lei
+1	50 000 000 lei
+
+=== ORDINAL (ORDINAL) ===
+1	primul
+1	primii
+1	primele
+1	a doua
+1	prima
+
+=== QUANTITY (QUANTITY) ===
+1	56
+I. NEMETI
+1	90
+Dr. ȘT. FERENCZI
+1	43 500 km
+1	sute de mii
+
+=== WORK_OF_ART (WORK_OF_ART) ===
+1	Ein Beitrag
+1	Ţara Oașului
+1	Țibleșul falnic
+1	Masele muncitoare
+
+=== EVENIMENTE (EVENT) ===
+1	al doilea război
+mondial
+1	frontul de luptă proletar
+1	Satu-Mare
+1	Rodna Veche
+
+=== PERIOADE (PERIOD) ===
+1	1923-1928
+1	— 25 octombrie 1944
+1	între august și septembrie 1943
+
+=== LANGUAGE (LANGUAGE) ===
+1	română

@@ -1,0 +1,399 @@
+CAIET DE SCHITE STILISTICE — din corpus_exemplu.txt
+==================================================
+
+EXPRESII (3-4 cuvinte):
+12	judeţul satu mare
+6	județului satu mare
+5	p c r
+4	timpul celor ani
+4	județul satu mare
+4	detașamentele de muncă
+4	central al p
+4	întreg nordul transilvaniei
+3	nord al transilvaniei
+3	partid din nordul
+3	comuniștii din nordul
+3	p c u
+3	baia mare etc
+3	antifasciste din nordul
+3	dezertările din armată
+2	muzeul de istorie
+2	istorie satu mare
+2	e satu mare
+2	studii şi comunicări
+2	satu mare octombrie
+2	popp e isac
+2	e isac n
+2	isac n tonitza
+2	mare au avut
+2	satu mare precum
+2	nordul transilvaniei s
+2	s a înrăutățit
+2	mare în timpul
+2	ani de război
+2	populare din judeţul
+2	satu mare carei
+2	satu mare s
+2	s au efectuat
+2	oamenii muncii maghiari
+2	secretariatul comitetului central
+2	vișeul de sus
+2	ciuc trei scaune
+2	ilegală de partid
+2	pseudo sindicaliste naţionaliste
+2	sindicaliste naţionaliste fasciste
+2	nemzeti munka k
+2	munka k zpont
+2	mare şi împrejurimi
+2	detaşamentele de muncă
+2	județul bistriţa năsăud
+2	etc cu toate
+2	jumătate a anului
+2	români și maghiari
+2	români şi maghiari
+2	mare un grup
+2	satu mare sighet
+2	s a răspîndit
+2	ordinelor de chemare
+2	începutul lunii octombrie
+2	nesupunerile la ordinele
+2	grupele de partizani
+2	odată cu apropierea
+2	maşinii de război
+2	fabricii de cherestea
+2	ordine de chemare
+4	central al p c
+3	întregul nord al transilvaniei
+3	partid din nordul transilvaniei
+3	comuniștii din nordul transilvaniei
+3	comitetului central al p
+3	antifasciste din nordul transilvaniei
+2	muzeul de istorie satu
+2	mare studii şi comunicări
+2	popp e isac n
+2	e isac n tonitza
+2	satu mare au avut
+2	mare au avut loc
+2	dictatul de la viena
+2	satu mare în timpul
+2	celor ani de război
+2	populare din judeţul satu
+2	pseudo sindicaliste naţionaliste fasciste
+2	nemzeti munka k zpont
+2	baia mare şi împrejurimi
+2	doua jumătate a anului
+2	satu mare un grup
+2	maşinii de război fasciste
+
+CONECTORI ELEGANTI:
+1	cu toate acestea
+1	drept urmare
+1	de altă parte
+1	pe de o parte
+1	pe de altă parte
+1	îndeosebi
+1	în pofida
+
+EPITETE (adjectiv+substantiv):
+4	maselor populare
+4	regimul fascist
+4	întreg nordul
+3	trupele fasciste
+3	regimului fascist
+3	războiului antisovietic
+3	întregul nord
+3	comitetului central
+2	integritatea teritorială
+2	masele largi
+2	partidul comunist
+2	vieții economice
+2	războiului hitlerist
+2	producției agricole
+2	forțele democratice
+2	autoritățile horthyste
+2	muncii maghiari
+2	exploatării capitaliste
+2	organizaţiilor fasciste
+2	forțele antifasciste
+2	nouă lovitură
+2	forțelor antifasciste
+2	cetățeni evrei
+2	mobilizarea generală
+2	trupele eliberatoare
+2	ardealul cotropit
+2	război fasciste
+2	diverse acțiuni
+2	acţiunile militare
+1	istorie satu-mare
+1	intreprinderea poligrafică
+1	republica socialistă
+1	rezistenţă antifascistă
+1	pleistocenului superior
+1	aşezarea paleolitică
+1	săpăturile arheologice
+1	descoperiri funerare
+1	morminte târzii
+1	comuna căuaş
+1	z grabfund
+1	z des
+1	z aus
+1	tip italian
+1	zur mare
+1	studiul aleentățiel
+1	volkstiimlichen rung
+1	artă populară
+1	cercetarea tipologică
+1	pia populare
+1	viguroasă personalitate
+1	anii premergători
+1	război mondial
+1	robiei fasciste
+1	pierderii totale
+1	independenţei naţionale
+1	duşmanul comun
+1	poporului român
+1	interese naţionale
+1	independenţa națională
+1	integritatea fascistă
+1	odiosul dictat
+1	majoritate românească
+1	comandamentul hitlerist
+1	plan precis
+1	operaţii militare
+1	întreaga țară
+1	dictatului fascist
+1	marile demonstrații
+1	diferite orașe
+1	primejdiei fasciste
+1	plină ascensiune
+1	interesele naţionale
+1	vatra familială
+1	armata română
+1	protestul vehement
+1	raportul contrainformativ
+1	pămintul scump
+1	falnicii munţi
+1	țibleșul falnic
+1	limba română
+1	divizii române
+1	regiment cunoscut
+1	sursele documentare
+1	puhoaie urmînd
+1	căruțe pline
+1	mod forțat
+1	comisariatul central
+1	refugiaţilor pînă
+1	ocupaţie fascisto-horthystă
+1	starea mizeră
+1	ruina economică
+1	ocupația fascistă
+1	gospodării țărănești
+1	produse valorînd
+1	trupelor operative
+1	calcul global
+1	inventarului agricol
+1	operațiunilor militare.8
+1	exploatare colonială
+1	bogăţiile naturale
+1	minereu neferos
+1	produselor cerealiere
+1	înrăutățirea îmbrăcăminte
+1	creșterea vertiginoasă
+1	scumpirea enormă
+1	situației deosebit
+1	împuternicitului guvernamental
+1	situația dezastruoasă
+1	organelor fasciste
+1	iulie nezultă
+1	sînt nevoite
+1	doleanțelor economice
+1	continuă creştere
+1	plan politic
+1	plan social
+1	regim feroce
+1	metode fasciste
+1	iierul scurt
+1	detașamentele forțată
+1	companii speciale
+1	exploatările forestiere
+1	muncitorii agricoli
+1	muncă forlată
+1	măsuri legislative
+1	exploatătii economice
+1	situajie gravă
+1	punct naţional
+1	populația românească
+1	diverse atacuri
+1	plan economic
+1	maselor exploatate
+1	activitate susţinută
+1	învrăjbire naţională
+1	asuprirea națională
+1	ocupației fasciste
+1	diverse feluri
+1	ordine speciale
+1	ţăranii români
+1	zona muntoasă
+1	condiţii grele
+1	drumuri impracticabile
+1	sentimentului național
+1	culturii naţionale
+1	desconsiderarea internările
+1	problema națională
+1	comisiei militare
+1	mixte germano-italiene
+1	întîmplător horthystă
+1	imboldul speranţei
+1	mașinile diplomatice
+
+VERBE:
+9	avea
+9	lua
+6	organiza
+5	arestaţi
+5	încerca
+4	pregăti
+4	manifesta
+4	hotări
+4	introduce
+4	începe
+3	preda
+3	apăra
+3	provoca
+3	putea
+3	forța
+3	refuza
+3	efectua
+3	jefui
+3	reuși
+3	crea
+3	opera
+3	urmări
+3	mobiliza
+3	lupta
+3	aresta
+3	conduce
+3	face
+3	ascunde
+3	acționa
+2	cînd
+2	cuprinde
+2	afla
+2	continuu
+2	folosi
+2	părăsi
+2	înrăutăți
+2	întocmi
+2	nevoi
+2	suferi
+2	rezulta
+2	distruge
+2	ridica
+2	include
+2	raporta
+2	peniru
+2	interna
+2	ataca
+2	continua
+2	desfășura
+2	urma
+2	acţiona
+2	antifascist
+2	condamnaţi
+2	reprezenta
+2	chemînd
+2	institui
+2	observa
+2	răspîndi
+2	închide
+2	obliga
+2	fugiţi
+2	emite
+2	acorda
+2	fugi
+2	dezerta
+2	ascunși
+2	contribui
+2	sprijini
+1	satu
+1	executa
+1	descoperi
+1	muncitoreşti
+1	stylistique
+1	abătu
+1	hitlerista
+1	călca
+1	subordona
+1	cît
+1	impune
+1	rupe
+1	arăta
+1	înfrigura
+1	comanda
+1	situaţia
+1	relata
+1	prezenta
+1	accentua
+1	ocupa
+1	arde
+1	notăm
+1	cheltui
+1	indica
+1	completa
+1	aminti
+1	nota
+1	datora
+1	izbucni
+1	colinda
+1	înăbuşi
+1	militariza
+1	deveni
+1	împotrivi
+1	duce
+1	pealeai
+1	desbina
+1	depune
+1	obligaţi
+1	cîte
+1	apropia
+1	însărcina
+1	înconjura
+1	sărutindu
+1	înaintîndu
+1	ioa
+1	discuta
+1	vizita
+1	revendica
+1	învăța
+1	cînta
+1	dispărea
+1	riscîndu
+1	situat
+1	lansa
+1	adresa
+1	îndemna
+1	întrerupe
+1	acumula
+1	abandona
+1	deplasa
+1	primi
+1	înștiința
+1	trimite
+1	rezolva
+1	realiza
+1	organizaţia
+1	îndeplini
+1	ține
+1	activa
+1	remarcîndu
+1	încadra
+1	concentra
+1	deslănțui
+1	întemnița
+1	propuni
+1	roşu
+1	semnala
+1	deieri
+1	intimida
+1	dura
+1	grupa

@@ -1,0 +1,146 @@
+ANALIZA 2 — EXPRESII — corpus_exemplu.txt
+
+BIGRAME (2 cuvinte):
+69	satu mare
+28	nordul transilvaniei
+12	judeţul satu
+12	baia mare
+6	județului satu
+5	județul satu
+4	timpul celor
+4	celor ani
+4	miliarde lei
+4	nordului transilvaniei
+4	maselor populare
+4	muncă forțată
+4	regimul fascist
+4	primăvara anului
+4	prin intermediul
+4	întreg nordul
+4	mare etc
+4	toamna anului
+3	germania hitleristă
+3	luna septembrie
+3	mare precum
+3	trupele fasciste
+3	vara anului
+3	regimului fascist
+3	războiului antisovietic
+3	întregul nord
+3	oamenii muncii
+3	comitetului central
+3	bistriţa năsăud
+3	armata horthystă
+2	istorie satu
+2	mare studii
+2	saiu mare
+2	mare octombrie
+2	aurel popp
+2	rezistență antifascistă
+2	integritatea teritorială
+2	masele largi
+2	partidul comunist
+2	avut loc
+2	vieții economice
+2	fascisto horthystă
+2	războiului hitlerist
+2	inclusă valoarea
+2	producției agricole
+2	aprovizionării populației
+2	mare carei
+2	economice sociale
+2	alte localităţi
+2	autoritățile horthyste
+2	luptă împotriva
+2	zdrobirea fascismului
+2	comunist român
+2	jugul fascist
+2	muncii maghiari
+2	exploatării capitaliste
+2	secretariatul comitetului
+2	continuă activitatea
+2	ciuc trei
+2	trei scaune
+2	tg mureș
+2	activitatea celulelor
+2	activitatea comuniștilor
+2	social democraţilor
+2	pseudo sindicaliste
+2	sindicaliste naţionaliste
+2	naţionaliste fasciste
+2	nemzeti munka
+2	aceste împrejurări
+2	social democraţi
+2	tg mureş
+2	sînt arestaţi
+2	împotriva elementelor
+2	rîndurile muncitorimii
+2	județul bistriţa
+2	doua jumătate
+2	nouă lovitură
+2	manifeste prin
+2	forțelor antifasciste
+2	poliția horthystă
+2	mare sighet
+2	toate acestea
+2	fiecare evreu
+2	cetățeni evrei
+2	mobilizarea generală
+2	cămărzana negrești
+2	trupele eliberatoare
+2	ardealul cotropit
+2	începutul lunii
+2	lunii octombrie
+2	chiar viața
+2	război fasciste
+2	luat amploare
+2	diverse acțiuni
+2	răcz mihai
+
+TRIGRAME (3 cuvinte):
+12	judeţul satu mare
+6	județului satu mare
+4	timpul celor ani
+4	județul satu mare
+4	detașamentele de muncă
+4	întreg nordul transilvaniei
+3	nord al transilvaniei
+3	partid din nordul
+3	comuniștii din nordul
+3	baia mare etc
+3	antifasciste din nordul
+3	dezertările din armată
+2	muzeul de istorie
+2	istorie satu mare
+2	studii şi comunicări
+2	satu mare octombrie
+2	mare au avut
+2	satu mare precum
+2	mare în timpul
+2	ani de război
+2	populare din judeţul
+2	satu mare carei
+2	oamenii muncii maghiari
+2	secretariatul comitetului central
+2	vișeul de sus
+2	ciuc trei scaune
+2	ilegală de partid
+2	pseudo sindicaliste naţionaliste
+2	sindicaliste naţionaliste fasciste
+2	mare şi împrejurimi
+2	detaşamentele de muncă
+2	județul bistriţa năsăud
+2	etc cu toate
+2	români și maghiari
+2	români şi maghiari
+2	mare un grup
+2	satu mare sighet
+2	ordinelor de chemare
+2	începutul lunii octombrie
+2	nesupunerile la ordinele
+2	grupele de partizani
+2	odată cu apropierea
+2	maşinii de război
+2	fabricii de cherestea
+2	ordine de chemare
+2	grup de muncitori

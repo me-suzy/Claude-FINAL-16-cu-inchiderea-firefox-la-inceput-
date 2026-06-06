@@ -46,7 +46,12 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import WebDriverException
+import urllib3
 from PIL import Image
+
+# erori care inseamna "browserul/geckodriver a murit" -> recuperam (restart)
+# include si ConnectionRefused (geckodriver omorat de alta instanta / scriptul mare): WinError 10061 = OSError
+BROWSER_DOWN_ERRORS = (WebDriverException, urllib3.exceptions.HTTPError, ConnectionError, OSError)
 
 # ======================= CONFIG =======================
 ADDITIONAL_COLLECTIONS = [
@@ -105,6 +110,10 @@ IMG_EXT = ("jpg", "png", "webp")
 
 class ScheduledStop(Exception):
     """Oprire programata (fereastra 03:40-04:00)."""
+
+
+class DailyLimitReached(Exception):
+    """Arcanum a atins limita zilnica de download - oprim si reluam maine."""
 
 
 def in_shutdown_window():
@@ -356,11 +365,11 @@ def retry_browser(br, fn, what, retries=6):
     for attempt in range(1, retries + 1):
         try:
             return fn()
-        except WebDriverException as e:
+        except BROWSER_DOWN_ERRORS as e:
             msg = (str(e) or type(e).__name__).splitlines()[0]
             print(f"   !! eroare browser la {what} (incercare {attempt}/{retries}): {msg[:120]}")
             if attempt >= retries:
-                raise
+                raise WebDriverException(f"browser indisponibil dupa {retries} incercari la {what}: {msg[:120]}")
             if not br.alive():
                 print("   ... fereastra inchisa/pierduta -> recuperare ...")
                 for tryno in range(3):
@@ -377,6 +386,10 @@ def retry_browser(br, fn, what, retries=6):
 
 # ----------------------- JS -----------------------
 JS_PAGECOUNT = "return document.querySelectorAll('ul.thumbs li.thumb-item').length;"
+
+# detecteaza ecranul "Daily download limit reached" (Arcanum a oprit livrarea imaginii)
+JS_LIMIT = ("return !!(document.body && "
+            "/daily download limit|download limit reached|limit reached/i.test(document.body.innerText));")
 
 JS_BIGIMG = r"""
 var imgs = Array.from(document.querySelectorAll('img.page-canvas, img[src^="blob:"]'))
@@ -534,6 +547,8 @@ def capture_document(br, view_url, stage_dir, state):
             drv = br.drv
             drv.get(f"{view_url}/?pg={pg}&layout=s")
             time.sleep(PAGE_WAIT)
+            if drv.execute_script(JS_LIMIT):     # "Daily download limit reached"
+                raise DailyLimitReached()
             wait_for_page_image(drv, timeout=30)
             return drv.execute_async_script(JS_GRAB_BLOB)
 
@@ -674,7 +689,27 @@ def finalize_pending_pdfs(state):
     print(f"Finalize: {facute} PDF-uri restante create." if facute else "Finalize: niciun PDF restant.")
 
 
+def acquire_single_instance():
+    """Mutex Windows: nu lasa 2 instante sa ruleze simultan (curatarea geckodriver din a
+    doua instanta ar omori geckodriver-ul primei -> ConnectionRefused / crash)."""
+    try:
+        import ctypes
+        h = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\ArcanumDownloadMetoda1_Lock")
+        if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            return None
+        return h  # tinem handle-ul cat traieste procesul (altfel se elibereaza mutex-ul)
+    except Exception:
+        return True  # daca nu merge mutex-ul, continuam oricum
+
+
 def main():
+    lock = acquire_single_instance()
+    if lock is None:
+        print("!! O ALTA instanta a acestui script ruleaza deja - inchid.")
+        print("   (doua instante si-ar omori reciproc geckodriver la curatarea de pornire).")
+        print("   Inchide cealalta fereastra sau asteapta sa termine, apoi reporneste.")
+        return
+
     state = load_state()
 
     # 1) intai facem PDF-urile restante (imagini complete dar fara PDF), fara browser
@@ -751,13 +786,16 @@ def main():
                           f"- PDF-ul se va face cand documentul e gata")
 
         print("\nGATA.")
+    except DailyLimitReached:
+        print("\n[LIMITA ZILNICA Arcanum atinsa] 'Daily download limit reached'. "
+              "Opresc - progresul e salvat in state.json. Reia maine (limita se reseteaza).")
     except ScheduledStop:
         print("\n[oprire programata 03:40-04:00] inchid aplicatia (state.json salvat). "
               "La 04:00 porneste celalalt script.")
     except KeyboardInterrupt:
         print("\n[oprit manual] progresul e salvat in state.json - reia de aici la repornire.")
-    except WebDriverException as e:
-        print(f"\n[oprit] browserul nu s-a putut recupera: {str(e).splitlines()[0][:120]}")
+    except BROWSER_DOWN_ERRORS as e:
+        print(f"\n[oprit] browserul/geckodriver nu s-a putut recupera: {str(e).splitlines()[0][:120]}")
         print("Progresul e salvat in state.json - reporneste scriptul ca sa reia de aici.")
     finally:
         br.quit()

@@ -1,0 +1,687 @@
+{
+  "date": "2026-06-06",
+  "count": 21162,
+  "downloaded_issues": [
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1971/",
+      "title": "Filme Noi, 1971 (nr. 1-10)",
+      "pages": 10,
+      "completed_at": null,
+      "last_successful_segment_end": 9,
+      "total_pages": 316,
+      "pdf": null
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1972/",
+      "title": "Filme Noi, 1972 (nr. 1-12)1972 / nr. 1",
+      "pages": 168,
+      "completed_at": "2026-06-04T12:34:17",
+      "last_successful_segment_end": 167,
+      "total_pages": 168
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1974/",
+      "title": "Filme Noi, 1974 (nr. 1)",
+      "pages": 28,
+      "completed_at": "2026-06-04T12:38:53",
+      "last_successful_segment_end": 27,
+      "total_pages": 28
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1976/",
+      "title": "Filme Noi, 1976 (nr. 6)1976 / nr. 6",
+      "pages": 42,
+      "completed_at": "2026-06-04T12:44:50",
+      "last_successful_segment_end": 41,
+      "total_pages": 42
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1977/",
+      "title": "Filme Noi, 1977 (nr. 2-12)1977-02-01 / nr. 2",
+      "pages": 300,
+      "completed_at": "2026-06-04T14:05:35",
+      "last_successful_segment_end": 299,
+      "total_pages": 300,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1977.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1978/",
+      "title": "Filme Noi, 1978 (nr. 1-11)",
+      "pages": 330,
+      "completed_at": "2026-06-04T18:38:33",
+      "last_successful_segment_end": 329,
+      "total_pages": 330,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1978.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1979/",
+      "title": "Filme Noi, 1979 (nr. 1-12)",
+      "pages": 432,
+      "completed_at": "2026-06-04T15:16:10",
+      "last_successful_segment_end": 431,
+      "total_pages": 432,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1979.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1980/",
+      "title": "Filme Noi, 1980 (nr. 1-12)",
+      "pages": 452,
+      "completed_at": "2026-06-04T18:38:50",
+      "last_successful_segment_end": 451,
+      "total_pages": 452,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1980.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1981/",
+      "title": "Filme Noi, 1981 (nr. 1-12)",
+      "pages": 388,
+      "completed_at": "2026-06-04T18:39:09",
+      "last_successful_segment_end": 387,
+      "total_pages": 388,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1981.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1982/",
+      "title": "Filme Noi, 1982 (nr. 1-12)1982-01-01 / nr. 1",
+      "pages": 368,
+      "completed_at": "2026-06-04T18:47:53",
+      "last_successful_segment_end": 367,
+      "total_pages": 368,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1982.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1983/",
+      "title": "Filme Noi, 1983 (nr. 1-12)",
+      "pages": 308,
+      "completed_at": "2026-06-04T18:48:06",
+      "last_successful_segment_end": 307,
+      "total_pages": 308,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1983.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1984/",
+      "title": "Filme Noi, 1984 (nr. 1-12)1984-01-01 / nr. 1",
+      "pages": 244,
+      "completed_at": "2026-06-04T18:48:17",
+      "last_successful_segment_end": 243,
+      "total_pages": 244,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1984.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1985/",
+      "title": "Filme Noi, 1985 (nr. 1-12)1985-01-01 / nr. 1",
+      "pages": 280,
+      "completed_at": "2026-06-04T19:14:08",
+      "last_successful_segment_end": 279,
+      "total_pages": 280,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1985.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1986/",
+      "title": "Filme Noi, 1986 (nr. 3-10)1986-03-01 / nr. 3",
+      "pages": 138,
+      "completed_at": "2026-06-04T19:25:03",
+      "last_successful_segment_end": 137,
+      "total_pages": 138,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1986.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1987/",
+      "title": "Filme Noi, 1987 (nr. 1-12)",
+      "pages": 338,
+      "completed_at": "2026-06-04T19:52:53",
+      "last_successful_segment_end": 337,
+      "total_pages": 338,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1987.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1988/",
+      "title": "Filme Noi, 1988 (nr. 1-12)1988-01-01 / nr. 1",
+      "pages": 342,
+      "completed_at": "2026-06-04T20:21:17",
+      "last_successful_segment_end": 341,
+      "total_pages": 342,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1988.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1989/",
+      "title": "Filme Noi, 1989 (nr. 1-8)",
+      "pages": 204,
+      "completed_at": "2026-06-04T20:38:53",
+      "last_successful_segment_end": 203,
+      "total_pages": 204,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1989.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1990/",
+      "title": "Filme Noi, 1990 (nr. 3-4)",
+      "pages": 92,
+      "completed_at": "2026-06-04T20:47:53",
+      "last_successful_segment_end": 91,
+      "total_pages": 92,
+      "pdf": "G:\\FilmeNoi\\FilmeNoi_1990.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/ITTrends_2009/",
+      "title": "IT Trends, 2009 (nr. 1-8)",
+      "pages": 308,
+      "completed_at": "2026-06-04T21:13:25",
+      "last_successful_segment_end": 307,
+      "total_pages": 308,
+      "pdf": "G:\\ITTrends\\ITTrends_2009.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_1969_studii/",
+      "title": "Bader Tibor (szerk.): Satu Mare. Studii şi comunicări 1. (1969)",
+      "pages": 349,
+      "completed_at": "2026-06-04T23:41:44",
+      "last_successful_segment_end": 348,
+      "total_pages": 349,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_1969_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_1972_studii/",
+      "title": "Satu Mare. Studii şi comunicări 2. (1972)",
+      "pages": 415,
+      "completed_at": "2026-06-05T00:18:58",
+      "last_successful_segment_end": 414,
+      "total_pages": 415,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_1972_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_1975_studii/",
+      "title": "Satu Mare. Studii şi comunicări 3. (1975)",
+      "pages": 343,
+      "completed_at": "2026-06-05T00:50:15",
+      "last_successful_segment_end": 342,
+      "total_pages": 343,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_1975_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_1980_studii/",
+      "title": "Radosav, Doru et al. (szerk.): Satu Mare. Studii şi comunicări 4. (1980)",
+      "pages": 561,
+      "completed_at": "2026-06-05T07:15:49",
+      "last_successful_segment_end": 560,
+      "total_pages": 561,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_1980_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_1981-82_studii/",
+      "title": "Radoslav, Doru et al. (szerk.): Satu Mare. Studii şi comunicări 5-6. (1981-1982)",
+      "pages": 777,
+      "completed_at": "2026-06-05T07:53:23",
+      "last_successful_segment_end": 776,
+      "total_pages": 777,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_1981-82_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_1986-87_studii/",
+      "title": "Radoslav, Doru et al. (szerk.): Satu Mare. Studii şi comunicări 7-8. (1986-1987)",
+      "pages": 527,
+      "completed_at": "2026-06-05T07:31:03",
+      "last_successful_segment_end": 526,
+      "total_pages": 527,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_1986-87_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_1992-93_studii/",
+      "title": "Ciubotă, Viorel (szerk.): Satu Mare. Studii şi comunicări 9-10. (1992-1993)",
+      "pages": 423,
+      "completed_at": "2026-06-05T08:48:22",
+      "last_successful_segment_end": 422,
+      "total_pages": 423,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_1992-93_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_1994-95_studii/",
+      "title": "Ciubotă, Viorel (szerk.): Satu Mare. Studii şi comunicări 11-12. (1994-1995)",
+      "pages": 619,
+      "completed_at": "2026-06-05T09:37:55",
+      "last_successful_segment_end": 618,
+      "total_pages": 619,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_1994-95_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_1996_studii/",
+      "title": "Ciubotă, Viorel (szerk.): Satu Mare. Studii şi comunicări 13. (1996)",
+      "pages": 465,
+      "completed_at": "2026-06-05T10:16:10",
+      "last_successful_segment_end": 464,
+      "total_pages": 465,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_1996_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_1997_studii/",
+      "title": "Ciubotă, Viorel (szerk.): Satu Mare. Studii şi comunicări 14. (1997)",
+      "pages": 475,
+      "completed_at": "2026-06-05T10:54:18",
+      "last_successful_segment_end": 474,
+      "total_pages": 475,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_1997_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_1998-99_studii/",
+      "title": "Ciubotă, Viorel (szerk.): Satu Mare. Studii şi comunicări 15-16. (1998-1999)",
+      "pages": 735,
+      "completed_at": "2026-06-05T11:52:28",
+      "last_successful_segment_end": 734,
+      "total_pages": 735,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_1998-99_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2000_stiinte_naturale/",
+      "title": "Ardelean, Gavril (szerk.): Satu Mare. Studii şi comunicări. Seria ştiinţele naturale 1. (2000)",
+      "pages": 515,
+      "completed_at": "2026-06-05T12:33:26",
+      "last_successful_segment_end": 514,
+      "total_pages": 515,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2000_stiinte_naturale.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2000-2004_arheologie/",
+      "title": "Szőcs, Péter Levente (szerk.): Satu Mare. Studii şi comunicări. Seria arheologie 17-21/1. (2000-2004)",
+      "pages": 201,
+      "completed_at": "2026-06-05T12:50:34",
+      "last_successful_segment_end": 200,
+      "total_pages": 201,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2000-2004_arheologie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2000-2004_istorie/",
+      "title": "Ciubotă, Viorel (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 17-21/2. (2000-2004)",
+      "pages": 435,
+      "completed_at": "2026-06-05T13:26:22",
+      "last_successful_segment_end": 434,
+      "total_pages": 435,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2000-2004_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2001-02_stiinte_naturale/",
+      "title": "Ardelean, Gavril (szerk.): Satu Mare. Studii şi comunicări. Seria ştiinţele naturale 2-3. (2001-2002)",
+      "pages": 363,
+      "completed_at": "2026-06-05T13:55:42",
+      "last_successful_segment_end": 362,
+      "total_pages": 363,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2001-02_stiinte_naturale.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2003-04_stiinte_naturale/",
+      "title": "Ardelean, Gavril (szerk.): Satu Mare. Studii şi comunicări. Seria ştiinţele naturale 4-5. (2003-2004)",
+      "pages": 259,
+      "completed_at": "2026-06-05T14:18:35",
+      "last_successful_segment_end": 258,
+      "total_pages": 259,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2003-04_stiinte_naturale.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2005_arheologie/",
+      "title": "Szőcs, Péter Levente (szerk.): Satu Mare. Studii şi comunicări. Seria arheologie 22/1. (2005)",
+      "pages": 167,
+      "completed_at": "2026-06-05T14:33:04",
+      "last_successful_segment_end": 166,
+      "total_pages": 167,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2005_arheologie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2005_stiinte_naturale/",
+      "title": "Ardelean, Gavril (szerk.): Satu Mare. Studii şi comunicări. Seria ştiinţele naturale 6. (2005)",
+      "pages": 371,
+      "completed_at": "2026-06-05T15:03:00",
+      "last_successful_segment_end": 370,
+      "total_pages": 371,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2005_stiinte_naturale.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2006_stiinte_naturale/",
+      "title": "Ardelean, Gavril - Buicu, Florin (szerk.): Satu Mare. Studii şi comunicări. Seria ştiinţele naturale 7. (2006)",
+      "pages": 339,
+      "completed_at": "2026-06-05T15:30:55",
+      "last_successful_segment_end": 338,
+      "total_pages": 339,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2006_stiinte_naturale.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SzatmariMuzeumKiadvanyai_Evkonyv__2005-2007_istorie/",
+      "title": "Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 22-24/2. (2005-2007)",
+      "pages": 404,
+      "completed_at": "2026-06-05T16:03:48",
+      "last_successful_segment_end": 403,
+      "total_pages": 404,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SzatmariMuzeumKiadvanyai_Evkonyv__2005-2007_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2006-2007_arheologie/",
+      "title": "Szőcs, Péter Levente (szerk.): Satu Mare. Studii şi comunicări. Seria arheologie 23-24/1. (2006-2007)",
+      "pages": 293,
+      "completed_at": "2026-06-05T16:28:58",
+      "last_successful_segment_end": 292,
+      "total_pages": 293,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2006-2007_arheologie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2007_stiinte_naturale/",
+      "title": "Ardelean, Gavril - Buicu, Florin (szerk.): Satu Mare. Studii şi comunicări. Seria ştiinţele naturale 8. (2007)",
+      "pages": 436,
+      "completed_at": "2026-06-05T17:03:56",
+      "last_successful_segment_end": 435,
+      "total_pages": 436,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2007_stiinte_naturale.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2008_arheologie/",
+      "title": "Marta, Liviu - Virag, Cristian (szerk.): Satu Mare. Studii şi comunicări. Seria arheologie 25/1. (2008)",
+      "pages": 195,
+      "completed_at": "2026-06-05T17:20:35",
+      "last_successful_segment_end": 194,
+      "total_pages": 195,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2008_arheologie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2008_istorie/",
+      "title": "Ciubotă, Viorel (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 25/2. (2008)",
+      "pages": 439,
+      "completed_at": "2026-06-05T17:55:55",
+      "last_successful_segment_end": 438,
+      "total_pages": 439,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2008_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2008_stiinte_naturale/",
+      "title": "Buicu, Florin - Cristea, Doina (szerk.): Satu Mare. Studii şi comunicări. Seria ştiinţele naturii 9. (2008)",
+      "pages": 159,
+      "completed_at": "2026-06-05T18:09:51",
+      "last_successful_segment_end": 158,
+      "total_pages": 159,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2008_stiinte_naturale.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2009-10_stiinte_naturale/",
+      "title": "Sike, Tamás (szerk.): Satu Mare. Studii şi comunicări. Seria ştiinţele naturale şi medicale 10-11. (2009-2010)",
+      "pages": 179,
+      "completed_at": "2026-06-05T18:26:13",
+      "last_successful_segment_end": 178,
+      "total_pages": 179,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2009-10_stiinte_naturale.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2010_arheologie/",
+      "title": "Marta, Liviu (szerk.): Satu Mare. Studii şi comunicări. Seria arheologie 26/1. (2010)",
+      "pages": 335,
+      "completed_at": "2026-06-05T18:53:31",
+      "last_successful_segment_end": 334,
+      "total_pages": 335,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2010_arheologie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2010_istorie/",
+      "title": "Virag, Paula (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 26/2. (2010)",
+      "pages": 243,
+      "completed_at": "2026-06-05T19:14:09",
+      "last_successful_segment_end": 242,
+      "total_pages": 243,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2010_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2011_arheologie/",
+      "title": "Virag, Cristian (szerk.): Satu Mare. Studii şi comunicări. Seria arheologie 27/1. (2011)",
+      "pages": 245,
+      "completed_at": "2026-06-05T19:58:41",
+      "last_successful_segment_end": 244,
+      "total_pages": 245,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2011_arheologie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2011_istorie/",
+      "title": "Virag, Paula (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 27/2. (2011)",
+      "pages": 223,
+      "completed_at": "2026-06-05T20:17:38",
+      "last_successful_segment_end": 222,
+      "total_pages": 223,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2011_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2012_arheologie/",
+      "title": "Astaloş, Ciprian (szerk.): Satu Mare. Studii şi comunicări. Seria arheologie 28/1. (2012)",
+      "pages": 323,
+      "completed_at": "2026-06-05T20:45:11",
+      "last_successful_segment_end": 322,
+      "total_pages": 323,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2012_arheologie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2012_istorie/",
+      "title": "Virag, Paula et al. (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 28/2. (2012)",
+      "pages": 163,
+      "completed_at": "2026-06-05T20:59:36",
+      "last_successful_segment_end": 162,
+      "total_pages": 163,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2012_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2013_arheologie/",
+      "title": "Marta, Liviu (szerk.): Satu Mare. Studii şi comunicări. Seria arheologie 29/1. (2013)",
+      "pages": 399,
+      "completed_at": "2026-06-06T08:21:59",
+      "last_successful_segment_end": 398,
+      "total_pages": 399,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2013_arheologie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2013_istorie/",
+      "title": "Porumbăcean, Claudiu et al. (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 29/2. (2013)",
+      "pages": 247,
+      "completed_at": "2026-06-06T08:42:45",
+      "last_successful_segment_end": 246,
+      "total_pages": 247,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2013_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2014_istorie/",
+      "title": "Porumbăcean, Claudiu et al. (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 30/2. (2014)",
+      "pages": 190,
+      "completed_at": "2026-06-06T08:59:14",
+      "last_successful_segment_end": 189,
+      "total_pages": 190,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2014_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2014_stiinte_naturale/",
+      "title": "Sike, Tamás (szerk.): Satu Mare. Studii şi comunicări. Seria ştiinţele naturale şi medicale 14. (2014)",
+      "pages": 151,
+      "completed_at": "2026-06-06T09:12:51",
+      "last_successful_segment_end": 150,
+      "total_pages": 151,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2014_stiinte_naturale.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2015_istorie/",
+      "title": "Porumbăcean, Claudiu et al. (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 31/2. (2015)",
+      "pages": 268,
+      "completed_at": "2026-06-06T09:35:12",
+      "last_successful_segment_end": 267,
+      "total_pages": 268,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2015_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2015-16_arheologie/",
+      "title": "Hágó Attila Nándor et al.: Satu Mare. Studii şi comunicări. Seria arheologie 31-32/1. (2015-2016)",
+      "pages": 172,
+      "completed_at": "2026-06-06T09:50:07",
+      "last_successful_segment_end": 171,
+      "total_pages": 172,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2015-16_arheologie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2016_istorie/",
+      "title": "Porumbăcean, Claudiu (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 32/2. (2016)",
+      "pages": 395,
+      "completed_at": "2026-06-06T10:21:55",
+      "last_successful_segment_end": 394,
+      "total_pages": 395,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2016_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2017_studii/",
+      "title": "Porumbăcean, Claudiu (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 33/2. (2017)",
+      "pages": 355,
+      "completed_at": "2026-06-06T10:50:36",
+      "last_successful_segment_end": 354,
+      "total_pages": 355,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2017_studii.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2018_istorie/",
+      "title": "Porumbăcean, Claudiu (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 34/2. (2018)",
+      "pages": 291,
+      "completed_at": "2026-06-06T11:14:26",
+      "last_successful_segment_end": 290,
+      "total_pages": 291,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2018_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/SatuMare_2019_istorie/",
+      "title": "Porumbăcean, Claudiu (szerk.): Satu Mare. Studii şi comunicări. Seria istorie-etnografie-artă 35/2. Volum aniversar 1969-2019 (2019)",
+      "pages": 453,
+      "completed_at": "2026-06-06T11:50:33",
+      "last_successful_segment_end": 452,
+      "total_pages": 453,
+      "pdf": "G:\\SzatmariMuzeumKiadvanyai_Evkonyv_ADT\\SatuMare_2019_istorie.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/Afirmarea_1937/",
+      "title": "Afirmarea, 1937 (Anul 2, nr. 1-12)",
+      "pages": 136,
+      "completed_at": "2026-06-06T12:02:50",
+      "last_successful_segment_end": 135,
+      "total_pages": 136,
+      "pdf": "G:\\Afirmarea\\Afirmarea_1937.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/Afirmarea_1938/",
+      "title": "Afirmarea, 1938 (Anul 3, nr. 1-12)",
+      "pages": 184,
+      "completed_at": "2026-06-06T12:18:46",
+      "last_successful_segment_end": 183,
+      "total_pages": 184,
+      "pdf": "G:\\Afirmarea\\Afirmarea_1938.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/Afirmarea_1939/",
+      "title": "Afirmarea, 1939 (Anul 4, nr. 1-12)",
+      "pages": 208,
+      "completed_at": "2026-06-06T12:36:28",
+      "last_successful_segment_end": 207,
+      "total_pages": 208,
+      "pdf": "G:\\Afirmarea\\Afirmarea_1939.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/Afirmarea_1940/",
+      "title": "Afirmarea, 1940 (Anul 5, nr. 1-8)",
+      "pages": 100,
+      "completed_at": "2026-06-06T12:45:59",
+      "last_successful_segment_end": 99,
+      "total_pages": 100,
+      "pdf": "G:\\Afirmarea\\Afirmarea_1940.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1989_12/",
+      "title": "Adevărul, decembrie 1989 (Anul 1, nr. 1-9)",
+      "pages": 32,
+      "completed_at": "2026-06-06T12:50:31",
+      "last_successful_segment_end": 31,
+      "total_pages": 32,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1989_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_01/",
+      "title": "Adevărul, ianuarie 1990 (Anul 2, nr. 10-34)",
+      "pages": 100,
+      "completed_at": "2026-06-06T13:00:16",
+      "last_successful_segment_end": 99,
+      "total_pages": 100,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_02/",
+      "title": "Adevărul, februarie 1990 (Anul 2, nr. 35-58)",
+      "pages": 100,
+      "completed_at": "2026-06-06T13:09:54",
+      "last_successful_segment_end": 99,
+      "total_pages": 100,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_03/",
+      "title": "Adevărul, martie 1990 (Anul 2, nr. 59-83)1990-03-01 / nr. 59",
+      "pages": 112,
+      "completed_at": "2026-06-06T13:20:23",
+      "last_successful_segment_end": 111,
+      "total_pages": 112,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_04/",
+      "title": "Adevărul, aprilie 1990 (Anul 2, nr. 84-103)",
+      "pages": 88,
+      "completed_at": "2026-06-06T13:29:06",
+      "last_successful_segment_end": 87,
+      "total_pages": 88,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_05/",
+      "title": "Adevărul, mai 1990 (Anul 2, nr. 104-125)",
+      "pages": 100,
+      "completed_at": "2026-06-06T13:38:45",
+      "last_successful_segment_end": 99,
+      "total_pages": 100,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_06/",
+      "title": "Adevărul, iunie 1990 (Anul 2, nr. 126-146)",
+      "pages": 100,
+      "completed_at": "2026-06-06T13:48:24",
+      "last_successful_segment_end": 99,
+      "total_pages": 100,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_07/",
+      "title": "Adevărul, iulie 1990 (Anul 2, nr. 147-166)",
+      "pages": 48,
+      "completed_at": "2026-06-06T13:54:02",
+      "last_successful_segment_end": 47,
+      "total_pages": 48,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_08/",
+      "title": "Adevărul, august 1990 (Anul 2, nr. 167-187)",
+      "pages": 72,
+      "completed_at": "2026-06-06T14:01:32",
+      "last_successful_segment_end": 71,
+      "total_pages": 72,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_09/",
+      "title": "Adevărul, septembrie 1990 (Anul 2, nr. 192-210)1990-09-04 / nr. 192",
+      "pages": 44,
+      "completed_at": "2026-06-06T14:06:51",
+      "last_successful_segment_end": 43,
+      "total_pages": 44,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_10/",
+      "title": "Adevărul, octombrie 1990 (Anul 2, nr. 212-233)",
+      "pages": 69,
+      "completed_at": null,
+      "last_successful_segment_end": 68,
+      "total_pages": 96,
+      "pdf": null
+    }
+  ]
+}

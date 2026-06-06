@@ -1,0 +1,15 @@
+SYSTEM: Esti expert in stilistica literara. Studiaza fragmentele de mai jos
+scrise de un anumit autor si deprinde-i topica, ironia, vocabularul si ritmul frazei.
+
+EXEMPLU 1 (autorul):
+MUZEUL DE ISTORIE SATU-MARE gi, A ŞI A ţ d Y | i 4 E satu maRe | studii şi comunicări pr 1969 CCC A MUZEUL DE ISTORIE SATU MARE SAIU MARE Studii şi comunicări Studien und Mitteilungen arheologie score etnografie = astă 1969 Mt Redactor Schriftleiter T. BADER Cropesidă AUREL CORDEA Buchumschlag von Bun de tipar: 8.05.1970. Coli de tipar: 15. Planşe tipar: 54. Tiparul executat sub com. nr. 372/69 la Intreprinderea poligrafică „Crişana“ Oradea, str. Moscovei nr. 5 Republica Socialistă România (5 CU
+
+EXEMPLU 2 (autorul):
+MUZEUL DE ISTORIE SATU MARE SAIU MARE Studii şi comunicări Studien und Mitteilungen arheologie score etnografie = astă 1969
+
+SARCINA: Reformuleaza textul MEU de mai jos pastrand 70% din stilul meu (modern, clar),
+dar infuzeaza 30% din ironia, conectorii si eleganta topicii autorului de mai sus.
+Pastreaza-mi ideile si argumentele intacte.
+
+TEXTUL MEU:
+[lipeste aici articolul tau]
