@@ -1,4 +1,4 @@
-AMPRENTA STILISTICA — g:/Temporare/SzatmariMuzeumKiadvanyai_Evkonyv_ADT/SatuMare_1969_studii_txt
-lungime medie fraza: 23.7; mediana 18
+AMPRENTA STILISTICA — stil_autor
+lungime medie fraza: 34.1; mediana 34
 
 Vezi consola pentru detalii complete.

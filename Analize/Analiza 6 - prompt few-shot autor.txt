@@ -2,10 +2,10 @@ SYSTEM: Esti expert in stilistica literara. Studiaza fragmentele de mai jos
 scrise de un anumit autor si deprinde-i topica, ironia, vocabularul si ritmul frazei.
 
 EXEMPLU 1 (autorul):
-MUZEUL DE ISTORIE SATU-MARE gi, A ŞI A ţ d Y | i 4 E satu maRe | studii şi comunicări pr 1969 CCC A MUZEUL DE ISTORIE SATU MARE SAIU MARE Studii şi comunicări Studien und Mitteilungen arheologie score etnografie = astă 1969 Mt Redactor Schriftleiter T. BADER Cropesidă AUREL CORDEA Buchumschlag von Bun de tipar: 8.05.1970. Coli de tipar: 15. Planşe tipar: 54. Tiparul executat sub com. nr. 372/69 la Intreprinderea poligrafică „Crişana“ Oradea, str. Moscovei nr. 5 Republica Socialistă România (5 CU
+[EMULATIE in maniera lui Stefan Zweig — text original scris pentru testarea analizei stilometrice. NU este Zweig autentic.] Exista in viata omenirii ceasuri rare, aproape miraculoase, in care timpul, de obicei atat de risipitor cu zilele sale cenusii si asemanatoare una alteia, aduna deodata intr-o singura clipa tot ce avea mai pretios de spus, si o face cu acea solemnitate cutremuratoare cu care un fulger lumineaza, pentru o fractiune de secunda, intreaga intindere a unei nopti. In asemenea mom
 
 EXEMPLU 2 (autorul):
-MUZEUL DE ISTORIE SATU MARE SAIU MARE Studii şi comunicări Studien und Mitteilungen arheologie score etnografie = astă 1969
+[EMULATIE in maniera lui Stefan Zweig — text original scris pentru testarea analizei stilometrice. NU este Zweig autentic.] Nu cred ca am cunoscut vreodata, in toti acesti ani de calatorii si de intalniri fugare, un chip in care lupta launtrica sa fi fost atat de limpede scrisa ca pe fata acelei femei. Statea in coltul cel mai retras al salonului, departe de lumina, si parea ca se straduieste din toate puterile sa nu existe, sa se faca nevazuta, asa cum fac uneori fiintele ranite care au inteles
 
 SARCINA: Reformuleaza textul MEU de mai jos pastrand 70% din stilul meu (modern, clar),
 dar infuzeaza 30% din ironia, conectorii si eleganta topicii autorului de mai sus.

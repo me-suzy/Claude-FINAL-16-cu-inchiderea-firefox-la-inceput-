@@ -17,7 +17,8 @@ Resume: la repornire se sar colectiile/documentele deja terminate (din state.jso
 si, in plus, paginile deja salvate pe disc -> un document intrerupt se reia de unde
 a ramas.
 
-Login: copiaza profilul Firefox activ in temp (cookie-uri => deja logat);
+Login: foloseste un profil Firefox separat si persistent. Daca sesiunea a expirat,
+face login automat si pastreaza cookie-ul pentru pornirile/restarturile urmatoare.
 Firefox-ul tau normal ramane deschis si neatins.
 """
 
@@ -29,6 +30,8 @@ import time
 import glob
 import base64
 import shutil
+import sqlite3
+import subprocess
 import tempfile
 from datetime import datetime, date, time as dtime
 
@@ -57,13 +60,31 @@ BROWSER_DOWN_ERRORS = (WebDriverException, urllib3.exceptions.HTTPError, Connect
 ADDITIONAL_COLLECTIONS = [
     # "https://adt.arcanum.com/ro/collection/FilmeNoi/",
     # "https://adt.arcanum.com/ro/collection/ITTrends/",
-    "https://adt.arcanum.com/ro/collection/SzatmariMuzeumKiadvanyai_Evkonyv_ADT/",
-    "https://adt.arcanum.com/ro/collection/Afirmarea/",
+    # "https://adt.arcanum.com/ro/collection/SzatmariMuzeumKiadvanyai_Evkonyv_ADT/",
+    # "https://adt.arcanum.com/ro/collection/Afirmarea/",
     "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/",
     "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=1990#collection-contents",
     "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2000#collection-contents",
     "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2010#collection-contents",
     "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2020#collection-contents",
+    "https://adt.arcanum.com/ro/collection/Radiofonia1925/",
+    "https://adt.arcanum.com/ro/collection/Flacara/",
+    "https://adt.arcanum.com/ro/collection/Flacara/?decade=1960#collection-contents",
+    "https://adt.arcanum.com/ro/collection/Flacara/?decade=1970#collection-contents",
+    "https://adt.arcanum.com/ro/collection/Flacara/?decade=1980#collection-contents",
+    "https://adt.arcanum.com/ro/collection/Flacara/?decade=1990#collection-contents",
+    "https://adt.arcanum.com/ro/collection/StudiiSiCercetariDeGeologie/",
+    "https://adt.arcanum.com/ro/collection/RevistaIndustriaAlimentare/",
+    "https://adt.arcanum.com/ro/collection/IndustriaLemnului/",
+    "https://adt.arcanum.com/ro/collection/Electricitatea/",
+    "https://adt.arcanum.com/ro/collection/RadioUniversul/",
+    "https://adt.arcanum.com/ro/collection/RealitateaEvreiasca/",
+    "https://adt.arcanum.com/ro/collection/ComertulModern/",
+    "https://adt.arcanum.com/ro/collection/RadioRoman/",
+    "https://adt.arcanum.com/ro/collection/PcMagazineRomania/",
+    "https://adt.arcanum.com/ro/collection/AgendaMagazin/",
+    "https://adt.arcanum.com/ro/collection/SalajulEuropean/",
+    "https://adt.arcanum.com/ro/collection/SalajulEuropean/?decade=2010#collection-contents",
     "https://adt.arcanum.com/ro/collection/Timpul/",
     "https://adt.arcanum.com/ro/collection/Timpul/?decade=2000#collection-contents",
     "https://adt.arcanum.com/ro/collection/Carpatii/",
@@ -73,10 +94,17 @@ ADDITIONAL_COLLECTIONS = [
     "https://adt.arcanum.com/ro/collection/CurierulFinanciar/",
     "https://adt.arcanum.com/ro/collection/EWeekRomania/",
     "https://adt.arcanum.com/ro/collection/EvenimentulSibian/",
+    "https://adt.arcanum.com/ro/collection/RepereTransilvane/",
     "https://adt.arcanum.com/ro/collection/EvenimentulSibian/?decade=2000#collection-contents",
     "https://adt.arcanum.com/ro/collection/NazuintaZilah/",
     "https://adt.arcanum.com/ro/collection/NazuintaZilah/?decade=1970#collection-contents",
     "https://adt.arcanum.com/ro/collection/NazuintaZilah/?decade=1980#collection-contents",
+    "https://adt.arcanum.com/ro/collection/ZiarulDeSibiu/",
+    "https://adt.arcanum.com/ro/collection/Rebus/",
+    "https://adt.arcanum.com/ro/collection/RevistaEconomica1974/",
+    "https://adt.arcanum.com/ro/collection/ZiDeZi/",
+    "https://adt.arcanum.com/ro/collection/ZiDeZi/?decade=2010#collection-contents",
+    "https://adt.arcanum.com/ro/collection/ZiDeZi/?decade=2020#collection-contents",
     "https://adt.arcanum.com/ro/collection/RevistaIstoricaRomana/",
 
 ]
@@ -84,6 +112,12 @@ ADDITIONAL_COLLECTIONS = [
 G_ROOT     = "G:\\"                                       # PDF-urile finale: G:\<Colectie>\<Document>.pdf
 TEMP_ROOT  = r"g:\Temporare"                              # imaginile (staging): g:\Temporare\<Colectie>\<Document>\
 STATE_PATH = r"d:\TEST\arcanum_capture\state.json"        # resume
+BIG_LOCK_PATH = r"d:\TEST\arcanum_capture\big_script_running.lock"  # lock-ul scriptului mare
+SESSION_PROFILE_DIR = r"d:\TEST\arcanum_capture\firefox_profile_metoda1"
+
+# Aceleasi date de login folosite de scriptul mare. Variabilele de mediu au prioritate.
+ARCANUM_USERNAME = os.environ.get("ARCANUM_USERNAME", "vascsssaraus@gmail.com")
+ARCANUM_PASSWORD = os.environ.get("ARCANUM_PASSWORD", "PASS")
 
 PAGE_WAIT = 4      # secunde de asteptare intre pagini (cerinta)
 PDF_WAIT  = 120    # 2 minute pauza dupa PDF-ul fiecarui document
@@ -209,41 +243,115 @@ def find_active_profile():
 
 # doar fisierele necesare pentru sesiunea logata (profilul complet poate avea sute de MB!)
 ESSENTIAL_FILES = [
-    "cookies.sqlite", "cookies.sqlite-wal", "cookies.sqlite-shm",
+    "cookies.sqlite",
     "key4.db", "logins.json", "cert9.db", "prefs.js", "permissions.sqlite",
-    "webappsstore.sqlite", "webappsstore.sqlite-wal", "webappsstore.sqlite-shm",
+    "webappsstore.sqlite",
     "handlers.json", "containers.json",
 ]
 
+SQLITE_PROFILE_FILES = {
+    "cookies.sqlite", "key4.db", "cert9.db",
+    "permissions.sqlite", "webappsstore.sqlite",
+}
 
-def copy_profile(src):
-    dst = tempfile.mkdtemp(prefix="ff_dl1_")
+
+def copy_sqlite_snapshot(src, dst):
+    """Copiaza consistent o baza SQLite chiar daca Firefox-ul normal o foloseste."""
+    source = sqlite3.connect(f"file:{src.replace(os.sep, '/')}?mode=ro", uri=True, timeout=10)
+    target = sqlite3.connect(dst)
+    try:
+        source.backup(target)
+    finally:
+        target.close()
+        source.close()
+
+
+def copy_profile(src, dst=None):
+    dst = dst or tempfile.mkdtemp(prefix="ff_dl1_")
+    os.makedirs(dst, exist_ok=True)
     for name in ESSENTIAL_FILES:
         s = os.path.join(src, name)
         if not os.path.exists(s):
             continue
         d = os.path.join(dst, name)
         try:
-            shutil.copy2(s, d)
+            if name in SQLITE_PROFILE_FILES:
+                copy_sqlite_snapshot(s, d)
+            else:
+                shutil.copy2(s, d)
         except Exception as e:
-            print(f"     ({name}: copy2 a esuat - {e}; incerc citire bruta)")
-            try:
-                with open(s, "rb") as fh:
-                    data = fh.read()
-                with open(d, "wb") as fh:
-                    fh.write(data)
-            except Exception as e2:
-                print(f"     ({name}: sarit - {e2})")
+            print(f"     ({name}: nu a putut fi copiat - {e})")
+    try:
+        with open(os.path.join(dst, "user.js"), "w", encoding="utf-8") as fh:
+            fh.write(
+                'user_pref("browser.startup.page", 0);\n'
+                'user_pref("browser.sessionstore.resume_from_crash", false);\n'
+                'user_pref("browser.sessionstore.max_resumed_crashes", 0);\n'
+                'user_pref("toolkit.startup.max_resumed_crashes", -1);\n'
+                'user_pref("browser.shell.checkDefaultBrowser", false);\n'
+                'user_pref("browser.startup.homepage_override.mstone", "ignore");\n'
+            )
+    except Exception as e:
+        print(f"     (user.js nu a putut fi creat - {e})")
     return dst
 
 
-def _gecko_service():
-    # fixam calea geckodriver ca Selenium sa NU mai porneasca Selenium Manager (care poate atinge reteaua si bloca)
-    path = shutil.which("geckodriver") or r"C:\Windows\geckodriver.exe"
+def remove_profile_locks(profile_dir):
+    """Sterge doar lock-urile ramase dupa ce Firefox-ul de automatizare a fost inchis."""
+    for name in ("parent.lock", "lock", ".parentlock", "MarionetteActivePort",
+                 "WebDriverBiDiServer.json"):
+        path = os.path.join(profile_dir, name)
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
+
+
+def ensure_session_profile(src):
+    """Creeaza o singura data profilul persistent; ulterior pastreaza cookie-urile de login."""
+    cookies = os.path.join(SESSION_PROFILE_DIR, "cookies.sqlite")
+    if os.path.exists(cookies):
+        remove_profile_locks(SESSION_PROFILE_DIR)
+        print(f"   refolosesc profilul persistent: {SESSION_PROFILE_DIR}")
+        return SESSION_PROFILE_DIR
+
+    print(f"   initializez profilul persistent: {SESSION_PROFILE_DIR}")
+    os.makedirs(SESSION_PROFILE_DIR, exist_ok=True)
+    copy_profile(src, SESSION_PROFILE_DIR)
+    remove_profile_locks(SESSION_PROFILE_DIR)
+    return SESSION_PROFILE_DIR
+
+
+def _gecko_service(attempt=1):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    path = next((p for p in [
+        os.path.join(os.path.dirname(script_dir), "geckodriver.exe"),
+        os.path.join(script_dir, "geckodriver.exe"),
+        shutil.which("geckodriver"),
+        r"C:\Windows\geckodriver.exe",
+    ] if p and os.path.exists(p)), None)
     try:
-        if os.path.exists(path):
+        if path:
             print(f"   geckodriver: {path}")
-            return FirefoxService(executable_path=path)
+            try:
+                version = subprocess.run(
+                    [path, "--version"], capture_output=True, text=True, timeout=10
+                ).stdout.splitlines()[0]
+                print(f"   {version}")
+            except Exception:
+                pass
+            log_dir = os.path.join(script_dir, "Logs")
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(
+                log_dir, f"geckodriver_{datetime.now():%Y%m%d_%H%M%S}_attempt{attempt}.log"
+            )
+            print(f"   log geckodriver: {log_path}")
+            return FirefoxService(
+                executable_path=path,
+                log_output=log_path,
+                service_args=["--log", "info"],
+            )
     except Exception as e:
         print(f"   (nu pot fixa geckodriver explicit: {e})")
     return FirefoxService()
@@ -276,14 +384,22 @@ def cleanup_stale_automation():
     omoara doar firefox.exe lansat cu profilul nostru temporar 'ff_dl1_' + toate geckodriver."""
     print("Curat geckodriver + Firefox de automatizare ramase (NU si Firefox-ul tau normal)...")
     try:
-        import subprocess
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        # /T omoara si procesele-copil (Firefox-ul de automatizare pornit de geckodriver);
-        # Firefox-ul tau normal NU e copil de geckodriver, deci ramane neatins.
-        subprocess.run(["taskkill", "/F", "/T", "/IM", "geckodriver.exe"],
-                       timeout=15, capture_output=True, creationflags=flags)
+        ps_cmd = (
+            "Get-Process -Name geckodriver -ErrorAction SilentlyContinue | "
+            "Stop-Process -Force -ErrorAction SilentlyContinue; "
+            "Start-Sleep -Milliseconds 500; "
+            "Get-CimInstance Win32_Process -Filter \"Name='firefox.exe'\" | "
+            "Where-Object { $_.CommandLine -like '*ff_dl1_*' -or "
+            "$_.CommandLine -like '*firefox_profile_metoda1*' } | "
+            "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+        )
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+            timeout=20, capture_output=True, creationflags=flags
+        )
     except Exception as e:
-        print(f"   (taskkill geckodriver: {e})")
+        print(f"   (curatare PowerShell: {e})")
     # sterge profilele temporare vechi (nu mai sunt folosite)
     removed = 0
     for d in glob.glob(os.path.join(tempfile.gettempdir(), "ff_dl1_*")):
@@ -292,10 +408,11 @@ def cleanup_stale_automation():
             removed += 1
         except Exception:
             pass
+    remove_profile_locks(SESSION_PROFILE_DIR)
     print(f"   curatat. (profile temporare vechi sterse: {removed})")
 
 
-def start_firefox(profile_dir):
+def start_firefox(profile_dir, attempt=1):
     opts = FirefoxOptions()
     opts.add_argument("--no-remote")
     opts.add_argument("-profile")
@@ -311,9 +428,10 @@ def start_firefox(profile_dir):
     else:
         print("   (nu am gasit firefox.exe explicit; las geckodriver sa caute)")
     print("   lansez Firefox prin geckodriver (poate dura 5-15s)...")
-    drv = webdriver.Firefox(options=opts, service=_gecko_service())
+    drv = webdriver.Firefox(options=opts, service=_gecko_service(attempt))
     drv.set_window_size(1500, 1200)
     drv.set_script_timeout(60)
+    drv.execute_script("return 1")
     print("   Firefox a pornit cu succes.")
     return drv
 
@@ -329,10 +447,22 @@ class Browser:
         print("   caut profilul Firefox activ...")
         src = find_active_profile()
         print(f"   profil sursa: {src}")
-        print("   copiez fisierele de login (cateva MB)...")
-        self.tmp = copy_profile(src)
-        print(f"   profil copiat in {time.time() - t:.1f}s -> {self.tmp}")
-        self.drv = start_firefox(self.tmp)
+        last_error = None
+        for attempt in range(1, 5):
+            if attempt > 1:
+                print(f"   reincerc pornirea Firefox ({attempt}/4)...")
+                time.sleep(5)
+            self.tmp = ensure_session_profile(src)
+            print(f"   profil de sesiune pregatit in {time.time() - t:.1f}s -> {self.tmp}")
+            try:
+                self.drv = start_firefox(self.tmp, attempt)
+                return
+            except Exception as e:
+                last_error = e
+                print(f"   Firefox nu a pornit ({attempt}/4): {str(e).splitlines()[0][:120]}")
+                self.quit()
+                cleanup_stale_automation()
+        raise WebDriverException(f"Firefox nu a pornit dupa 4 incercari: {last_error}")
 
     def quit(self):
         try:
@@ -341,9 +471,11 @@ class Browser:
         except Exception:
             pass
         self.drv = None
-        if self.tmp:
+        if self.tmp and os.path.basename(self.tmp).startswith("ff_dl1_"):
             shutil.rmtree(self.tmp, ignore_errors=True)
-            self.tmp = None
+        elif self.tmp:
+            remove_profile_locks(self.tmp)
+        self.tmp = None
 
     def alive(self):
         try:
@@ -382,6 +514,99 @@ def retry_browser(br, fn, what, retries=6):
             else:
                 time.sleep(2)
     return None
+
+
+# ----------------------- login Arcanum -----------------------
+def detect_login_required(drv):
+    """Aceeasi detectie folosita de scriptul mare."""
+    try:
+        current_url = drv.current_url or ""
+        if "/accounts/login/" in current_url:
+            print("   [login] pagina de login detectata prin URL")
+            return True
+
+        username = drv.find_elements(By.CSS_SELECTOR, "input[name='username'], #id_username")
+        password = drv.find_elements(By.CSS_SELECTOR, "input[name='password'], #id_password")
+        if username and password:
+            print("   [login] campurile de autentificare sunt vizibile")
+            return True
+
+        body_text = drv.execute_script(
+            "return document.body ? document.body.innerText.slice(0, 5000) : '';"
+        ) or ""
+        if "Accesarea documentelor necesită abonament" in body_text or \
+                "Accesarea documentelor necesita abonament" in body_text:
+            print("   [login] documentul necesita autentificare")
+            return True
+    except Exception as e:
+        print(f"   [login] detectia a esuat: {str(e).splitlines()[0][:120]}")
+    return False
+
+
+def perform_auto_login(drv, return_url=None):
+    """Login automat dupa modelul scriptului mare; cookie-ul ramane in profilul persistent."""
+    print("\n" + "=" * 60)
+    print("LOGIN AUTOMAT ARCANUM")
+    print("=" * 60)
+    try:
+        if "/accounts/login/" not in (drv.current_url or ""):
+            drv.get("https://adt.arcanum.com/ro/accounts/login/?next=/ro/")
+
+        wait = WebDriverWait(drv, 30)
+        username_field = wait.until(
+            EC.presence_of_element_located((By.ID, "id_username"))
+        )
+        password_field = wait.until(
+            EC.presence_of_element_located((By.ID, "id_password"))
+        )
+
+        print("   astept autocomplete Firefox...")
+        time.sleep(5)
+        current_username = username_field.get_attribute("value") or ""
+        current_password = password_field.get_attribute("value") or ""
+
+        if not current_username:
+            username_field.clear()
+            username_field.send_keys(ARCANUM_USERNAME)
+        if not current_password:
+            password_field.clear()
+            password_field.send_keys(ARCANUM_PASSWORD)
+
+        submit = drv.find_element(
+            By.CSS_SELECTOR,
+            "input.btn.btn-primary[type='submit'][value='Conectare'], "
+            "input[type='submit'][value='Conectare']"
+        )
+        submit.click()
+
+        WebDriverWait(drv, 30).until(
+            lambda d: "/accounts/login/" not in (d.current_url or "")
+        )
+        print(f"   LOGIN REUSIT: {drv.current_url}")
+
+        if return_url:
+            drv.get(return_url)
+            WebDriverWait(drv, 40).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            if detect_login_required(drv):
+                print("   loginul nu a ramas activ dupa revenirea la document")
+                return False
+            print(f"   revenit dupa login la: {drv.current_url}")
+        return True
+    except Exception as e:
+        print(f"   LOGIN ESUAT: {str(e).splitlines()[0][:160]}")
+        return False
+    finally:
+        print("=" * 60 + "\n")
+
+
+def ensure_logged_in(br, return_url=None):
+    if not detect_login_required(br.drv):
+        return True
+    if not perform_auto_login(br.drv, return_url):
+        raise WebDriverException("Loginul Arcanum a esuat.")
+    return True
 
 
 # ----------------------- JS -----------------------
@@ -506,8 +731,10 @@ def capture_document(br, view_url, stage_dir, state):
 
     def _open():
         drv = br.drv
-        drv.get(view_url + "/?pg=0&layout=s")
+        target_url = view_url + "/?pg=0&layout=s"
+        drv.get(target_url)
         WebDriverWait(drv, 40).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        ensure_logged_in(br, target_url)
         title = get_issue_title(drv)
         total = 0
         for _ in range(40):
@@ -545,7 +772,9 @@ def capture_document(br, view_url, stage_dir, state):
 
         def _capture():
             drv = br.drv
-            drv.get(f"{view_url}/?pg={pg}&layout=s")
+            target_url = f"{view_url}/?pg={pg}&layout=s"
+            drv.get(target_url)
+            ensure_logged_in(br, target_url)
             time.sleep(PAGE_WAIT)
             if drv.execute_script(JS_LIMIT):     # "Daily download limit reached"
                 raise DailyLimitReached()
@@ -651,42 +880,102 @@ def finalize_pending_pdfs(state):
     Nu are nevoie de browser - lucreaza doar de pe disc + total_pages din state.json.
     Asa nu se mai pierde niciun PDF chiar daca oprești des aplicatia."""
     print("Verific PDF-uri restante (imagini complete dar fara PDF)...")
-    totals, entries_by_name = {}, {}
-    for e in state["downloaded_issues"]:
-        nm = e.get("url", "").rstrip("/").split("/")[-1]
-        totals[nm] = e.get("total_pages", 0)
-        entries_by_name[nm] = e
     if not os.path.isdir(TEMP_ROOT):
         return
+
+    pending = [
+        e for e in state["downloaded_issues"]
+        if not e.get("completed_at") and e.get("url")
+    ]
+    collection_dirs = [
+        os.path.join(TEMP_ROOT, name)
+        for name in os.listdir(TEMP_ROOT)
+        if os.path.isdir(os.path.join(TEMP_ROOT, name))
+    ]
     facute = 0
-    for cname in sorted(os.listdir(TEMP_ROOT)):
-        cdir = os.path.join(TEMP_ROOT, cname)
-        if not os.path.isdir(cdir):
+    for e in pending:
+        name = e.get("url", "").rstrip("/").split("/")[-1]
+        stage = next(
+            (os.path.join(cdir, name) for cdir in collection_dirs
+             if os.path.isdir(os.path.join(cdir, name))),
+            None,
+        )
+        if not stage:
             continue
-        for name in sorted(os.listdir(cdir)):
-            stage = os.path.join(cdir, name)
-            if not os.path.isdir(stage):
-                continue
-            e = entries_by_name.get(name)
-            if e is not None and e.get("completed_at"):
-                continue  # deja finalizat in json -> nu reface (poate userul a sters PDF-ul intentionat)
-            tot = totals.get(name, 0)
-            files = collect_page_files(stage)
-            if not tot or len(files) < tot:
-                continue  # incomplet -> il termina bucla de download
-            pdf_path = os.path.join(G_ROOT, cname, name + ".pdf")
-            if os.path.exists(pdf_path):
-                continue  # deja are PDF
-            check_schedule()
-            print(f"  [finalize] {cname}/{name}: {len(files)}/{tot} imagini, PDF lipsa -> il fac acum")
-            if build_pdf(files, pdf_path, tot):
-                e = entries_by_name.get(name)
-                if e is not None:
-                    e["completed_at"] = datetime.now().isoformat(timespec="seconds")
-                    e["pdf"] = pdf_path
-                    save_state(state)
-                facute += 1
+        tot = e.get("total_pages", 0)
+        files = collect_page_files(stage)
+        if not tot or len(files) < tot:
+            continue
+        cname = os.path.basename(os.path.dirname(stage))
+        pdf_path = os.path.join(G_ROOT, cname, name + ".pdf")
+        if os.path.exists(pdf_path):
+            continue
+        check_schedule()
+        print(f"  [finalize] {cname}/{name}: {len(files)}/{tot} imagini, PDF lipsa -> il fac acum")
+        if build_pdf(files, pdf_path, tot):
+            e["completed_at"] = datetime.now().isoformat(timespec="seconds")
+            e["pdf"] = pdf_path
+            save_state(state)
+            facute += 1
     print(f"Finalize: {facute} PDF-uri restante create." if facute else "Finalize: niciun PDF restant.")
+
+
+def find_priority_issue(state):
+    """Ultimul document partial care apartine unei colectii active."""
+    active_names = {
+        collection_name(url) for url in ADDITIONAL_COLLECTIONS
+    }
+    for entry in reversed(state.get("downloaded_issues", [])):
+        if entry.get("completed_at") or not entry.get("url"):
+            continue
+        if int(entry.get("pages") or 0) <= 0:
+            continue
+        name = doc_name(entry["url"])
+        if any(name == cname or name.startswith(cname + "_") for cname in active_names):
+            return entry
+    return None
+
+
+def _pid_alive(pid):
+    try:
+        import ctypes
+        h = ctypes.windll.kernel32.OpenProcess(0x1000, False, int(pid))  # QUERY_LIMITED_INFORMATION
+        if h:
+            ctypes.windll.kernel32.CloseHandle(h)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def wait_for_big_script():
+    """Daca scriptul MARE ruleaza (are lock), asteptam sa termine - ca sa NU se intercaleze
+    cele doua si sa-si omoare reciproc geckodriver-ul. Lock vechi (proces mort) e ignorat."""
+    announced = False
+    waited = 0
+    while os.path.exists(BIG_LOCK_PATH):
+        try:
+            pid = int((open(BIG_LOCK_PATH, encoding="utf-8").read().strip() or "0"))
+        except Exception:
+            pid = 0
+        if not pid or not _pid_alive(pid):
+            print("Lock-ul scriptului mare e vechi (proces inexistent) - il ignor.")
+            try:
+                os.remove(BIG_LOCK_PATH)
+            except Exception:
+                pass
+            break
+        if not announced:
+            print("Scriptul MARE inca ruleaza (download PDF) - astept sa termine inainte sa pornesc...")
+            announced = True
+        check_schedule()          # daca intram in fereastra 03:40-04:00 cat asteptam, ne oprim curat
+        time.sleep(15)
+        waited += 15
+        if waited > 4 * 3600:     # plasa de siguranta: 4 ore
+            print("Am asteptat 4h dupa scriptul mare - continui oricum.")
+            break
+    if announced:
+        print("Scriptul mare a terminat - pot porni acum.")
 
 
 def acquire_single_instance():
@@ -710,14 +999,14 @@ def main():
         print("   Inchide cealalta fereastra sau asteapta sa termine, apoi reporneste.")
         return
 
-    state = load_state()
-
-    # 1) intai facem PDF-urile restante (imagini complete dar fara PDF), fara browser
+    # Daca scriptul MARE inca ruleaza, asteptam sa termine (sa NU se intercaleze).
     try:
-        finalize_pending_pdfs(state)
+        wait_for_big_script()
     except ScheduledStop:
-        print("\n[oprire programata 03:40-04:00] inchid aplicatia.")
+        print("\n[oprire programata 03:40-04:00] inchid (asteptam scriptul mare).")
         return
+
+    state = load_state()
 
     cleanup_stale_automation()   # ca sa nu mai fie nevoie de restart la PC dupa multe rulari
 
@@ -725,6 +1014,27 @@ def main():
     br = Browser()
     try:
         br.start()
+
+        priority = find_priority_issue(state)
+        if priority:
+            priority_url = priority["url"].rstrip("/")
+            next_page = max(0, int(priority.get("last_successful_segment_end") or -1) + 1)
+            print(f"\nDeschid imediat documentul partial prioritar: {priority_url} (pagina {next_page})")
+
+            def _open_priority():
+                target_url = f"{priority_url}/?pg={next_page}&layout=s"
+                br.drv.get(target_url)
+                WebDriverWait(br.drv, 40).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "body"))
+                )
+                ensure_logged_in(br, target_url)
+                return br.drv.current_url
+
+            opened_url = retry_browser(br, _open_priority, "deschidere document prioritar")
+            print(f"Firefox a accesat: {opened_url}")
+
+        # Verifica doar documentele incomplete din state, nu toate cele 45.000+ imagini.
+        finalize_pending_pdfs(state)
 
         for coll_url in ADDITIONAL_COLLECTIONS:
             check_schedule()
@@ -735,6 +1045,7 @@ def main():
                 drv = br.drv
                 drv.get(coll_url)
                 WebDriverWait(drv, 40).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+                ensure_logged_in(br, coll_url)
                 time.sleep(2)
                 return extract_document_urls(drv)
 

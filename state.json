@@ -1,6 +1,6 @@
 {
-  "date": "2026-06-06",
-  "count": 21162,
+  "date": "2026-06-11",
+  "count": 72131,
   "downloaded_issues": [
     {
       "url": "https://adt.arcanum.com/ro/view/FilmeNoi_1971/",
@@ -677,10 +677,1279 @@
     {
       "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_10/",
       "title": "Adevărul, octombrie 1990 (Anul 2, nr. 212-233)",
-      "pages": 69,
-      "completed_at": null,
-      "last_successful_segment_end": 68,
+      "pages": 96,
+      "completed_at": "2026-06-06T14:16:09",
+      "last_successful_segment_end": 95,
       "total_pages": 96,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_11/",
+      "title": "Adevărul, noiembrie 1990 (Anul 2, nr. 234-255)",
+      "pages": 92,
+      "completed_at": "2026-06-06T14:25:51",
+      "last_successful_segment_end": 91,
+      "total_pages": 92,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1990_12/",
+      "title": "Adevărul, decembrie 1990 (Anul 2, nr. 256-274)",
+      "pages": 88,
+      "completed_at": "2026-06-06T14:35:16",
+      "last_successful_segment_end": 87,
+      "total_pages": 88,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1990_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_01/",
+      "title": "Adevărul, ianuarie 1993 (Anul 5, nr. 785-804)",
+      "pages": 160,
+      "completed_at": "2026-06-06T14:49:29",
+      "last_successful_segment_end": 159,
+      "total_pages": 160,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_02/",
+      "title": "Adevărul, februarie 1993 (Anul 5, nr. 805-824)",
+      "pages": 160,
+      "completed_at": "2026-06-06T15:03:46",
+      "last_successful_segment_end": 159,
+      "total_pages": 160,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_03/",
+      "title": "Adevărul, martie 1993 (Anul 5, nr. 825-846)",
+      "pages": 174,
+      "completed_at": "2026-06-06T15:19:12",
+      "last_successful_segment_end": 173,
+      "total_pages": 174,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_04/",
+      "title": "Adevărul, aprilie 1993 (Anul 5, nr. 847-867)",
+      "pages": 172,
+      "completed_at": "2026-06-06T15:34:34",
+      "last_successful_segment_end": 171,
+      "total_pages": 172,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_05/",
+      "title": "Adevărul, mai 1993 (Anul 5, nr. 868-888)",
+      "pages": 164,
+      "completed_at": "2026-06-06T15:49:12",
+      "last_successful_segment_end": 163,
+      "total_pages": 164,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_06/",
+      "title": "Adevărul, iunie 1993 (Anul 5, nr. 889-910)",
+      "pages": 152,
+      "completed_at": "2026-06-06T16:02:52",
+      "last_successful_segment_end": 151,
+      "total_pages": 152,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_07/",
+      "title": "Adevărul, iulie 1993 (Anul 5, nr. 911-933)",
+      "pages": 368,
+      "completed_at": "2026-06-06T16:34:02",
+      "last_successful_segment_end": 367,
+      "total_pages": 368,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_08/",
+      "title": "Adevărul, august 1993 (Anul 5, nr. 934-957)",
+      "pages": 348,
+      "completed_at": "2026-06-06T17:02:50",
+      "last_successful_segment_end": 347,
+      "total_pages": 348,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_09/",
+      "title": "Adevărul, septembrie 1993 (Anul 5, nr. 958-983)",
+      "pages": 340,
+      "completed_at": "2026-06-06T17:31:42",
+      "last_successful_segment_end": 339,
+      "total_pages": 340,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_10/",
+      "title": "Adevărul, octombrie 1993 (Anul 5, nr. 984-1009)",
+      "pages": 344,
+      "completed_at": "2026-06-06T17:59:52",
+      "last_successful_segment_end": 343,
+      "total_pages": 344,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_11/",
+      "title": "Adevărul, noiembrie 1993 (Anul 5, nr. 1010-1035)",
+      "pages": 296,
+      "completed_at": "2026-06-06T18:24:27",
+      "last_successful_segment_end": 295,
+      "total_pages": 296,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1993_12/",
+      "title": "Adevărul, decembrie 1993 (Anul 5, nr. 1038-1058)",
+      "pages": 224,
+      "completed_at": "2026-06-06T18:43:31",
+      "last_successful_segment_end": 223,
+      "total_pages": 224,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1993_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_01/",
+      "title": "Adevărul, ianuarie 1994 (Anul 6, nr. 1059-1078)",
+      "pages": 170,
+      "completed_at": "2026-06-06T18:58:26",
+      "last_successful_segment_end": 169,
+      "total_pages": 170,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_02/",
+      "title": "Adevărul, februarie 1994 (Anul 6, nr. 1083-1106)",
+      "pages": 284,
+      "completed_at": "2026-06-06T19:22:09",
+      "last_successful_segment_end": 283,
+      "total_pages": 284,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_03/",
+      "title": "Adevărul, martie 1994 (Anul 6, nr. 1107-1133)",
+      "pages": 270,
+      "completed_at": "2026-06-06T19:45:23",
+      "last_successful_segment_end": 269,
+      "total_pages": 270,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_04/",
+      "title": "Adevărul, aprilie 1994 (Anul 6, nr. 1134-1159)",
+      "pages": 306,
+      "completed_at": "2026-06-06T20:10:47",
+      "last_successful_segment_end": 305,
+      "total_pages": 306,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_05/",
+      "title": "Adevărul, mai 1994 (Anul 6, nr. 1160-1184)",
+      "pages": 288,
+      "completed_at": "2026-06-06T20:34:47",
+      "last_successful_segment_end": 287,
+      "total_pages": 288,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_06/",
+      "title": "Adevărul, iunie 1994 (Anul 6, nr. 1185-1210)",
+      "pages": 308,
+      "completed_at": "2026-06-06T21:00:14",
+      "last_successful_segment_end": 307,
+      "total_pages": 308,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_07/",
+      "title": "Adevărul, iulie 1994 (Anul 6, nr. 1211-1235)",
+      "pages": 308,
+      "completed_at": "2026-06-06T21:25:55",
+      "last_successful_segment_end": 307,
+      "total_pages": 308,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_08/",
+      "title": "Adevărul, august 1994 (Anul 6, nr. 1237-1263)",
+      "pages": 320,
+      "completed_at": "2026-06-06T21:52:22",
+      "last_successful_segment_end": 319,
+      "total_pages": 320,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_09/",
+      "title": "Adevărul, septembrie 1994 (Anul 6, nr. 1264-1289)",
+      "pages": 316,
+      "completed_at": "2026-06-07T07:43:29",
+      "last_successful_segment_end": 315,
+      "total_pages": 316,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_10/",
+      "title": "Adevărul, octombrie 1994 (Anul 6, nr. 1290-1315)",
+      "pages": 248,
+      "completed_at": "2026-06-07T08:04:47",
+      "last_successful_segment_end": 247,
+      "total_pages": 248,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_11/",
+      "title": "Adevărul, noiembrie 1994 (Anul 6, nr. 1316-1341)",
+      "pages": 300,
+      "completed_at": "2026-06-07T08:30:11",
+      "last_successful_segment_end": 299,
+      "total_pages": 300,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1994_12/",
+      "title": "Adevărul, decembrie 1994 (Anul 6, nr. 1342-1365)",
+      "pages": 288,
+      "completed_at": "2026-06-07T08:54:17",
+      "last_successful_segment_end": 287,
+      "total_pages": 288,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1994_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_01/",
+      "title": "Adevărul, ianuarie 1995 (Anul 7, nr. 1367-1391)",
+      "pages": 298,
+      "completed_at": "2026-06-07T09:19:24",
+      "last_successful_segment_end": 297,
+      "total_pages": 298,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_02/",
+      "title": "Adevărul, februarie 1995 (Anul 7, nr. 1392-1415)",
+      "pages": 286,
+      "completed_at": "2026-06-07T09:43:31",
+      "last_successful_segment_end": 285,
+      "total_pages": 286,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_03/",
+      "title": "Adevărul, martie 1995 (Anul 7, nr. 1416-1442)",
+      "pages": 356,
+      "completed_at": "2026-06-07T10:13:32",
+      "last_successful_segment_end": 355,
+      "total_pages": 356,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_04/",
+      "title": "Adevărul, aprilie 1995 (Anul 7, nr. 1443-1466)",
+      "pages": 302,
+      "completed_at": "2026-06-07T10:38:55",
+      "last_successful_segment_end": 301,
+      "total_pages": 302,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_05/",
+      "title": "Adevărul, mai 1995 (Anul 7, nr. 1467-1491)",
+      "pages": 276,
+      "completed_at": "2026-06-07T11:02:10",
+      "last_successful_segment_end": 275,
+      "total_pages": 276,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_06/",
+      "title": "Adevărul, iunie 1995 (Anul 7, nr. 1492-1517)",
+      "pages": 276,
+      "completed_at": "2026-06-07T11:25:45",
+      "last_successful_segment_end": 275,
+      "total_pages": 276,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_07/",
+      "title": "Adevărul, iulie 1995 (Anul 7, nr. 1518-1543)",
+      "pages": 328,
+      "completed_at": "2026-06-07T11:53:16",
+      "last_successful_segment_end": 327,
+      "total_pages": 328,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_08/",
+      "title": "Adevărul, august 1995 (Anul 7, nr. 1544-1570)",
+      "pages": 338,
+      "completed_at": "2026-06-07T12:21:32",
+      "last_successful_segment_end": 337,
+      "total_pages": 338,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_09/",
+      "title": "Adevărul, septembrie 1995 (Anul 7, nr. 1571-1596)",
+      "pages": 332,
+      "completed_at": "2026-06-07T12:49:28",
+      "last_successful_segment_end": 331,
+      "total_pages": 332,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_10/",
+      "title": "Adevărul, octombrie 1995 (Anul 7, nr. 1597-1622)1995-10-02 / nr. 1597",
+      "pages": 326,
+      "completed_at": "2026-06-07T13:18:10",
+      "last_successful_segment_end": 325,
+      "total_pages": 326,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_11/",
+      "title": "Adevărul, noiembrie 1995 (Anul 7, nr. 1623-1648)",
+      "pages": 426,
+      "completed_at": "2026-06-07T13:53:51",
+      "last_successful_segment_end": 425,
+      "total_pages": 426,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1995_12/",
+      "title": "Adevărul, decembrie 1995 (Anul 7, nr. 1649-1671)",
+      "pages": 406,
+      "completed_at": "2026-06-07T14:28:21",
+      "last_successful_segment_end": 405,
+      "total_pages": 406,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1995_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_01/",
+      "title": "Adevărul, ianuarie 1996 (Anul 8, nr. 1672-1696)",
+      "pages": 382,
+      "completed_at": "2026-06-07T15:00:47",
+      "last_successful_segment_end": 381,
+      "total_pages": 382,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_02/",
+      "title": "Adevărul, februarie 1996 (Anul 8, nr. 1697-1721)",
+      "pages": 314,
+      "completed_at": "2026-06-07T15:26:48",
+      "last_successful_segment_end": 313,
+      "total_pages": 314,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_03/",
+      "title": "Adevărul, martie 1996 (Anul 8, nr. 1722-1747)",
+      "pages": 336,
+      "completed_at": "2026-06-07T15:54:29",
+      "last_successful_segment_end": 335,
+      "total_pages": 336,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_04/",
+      "title": "Adevărul, aprilie 1996 (Anul 8, nr. 1748-1771)",
+      "pages": 306,
+      "completed_at": "2026-06-07T16:20:12",
+      "last_successful_segment_end": 305,
+      "total_pages": 306,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_05/",
+      "title": "Adevărul, mai 1996 (Anul 8, nr. 1772-1795)1996-05-02 / nr. 1772",
+      "pages": 378,
+      "completed_at": "2026-06-07T16:51:13",
+      "last_successful_segment_end": 377,
+      "total_pages": 378,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_06/",
+      "title": "Adevărul, iunie 1996 (Anul 8, nr. 1798-1822)",
+      "pages": 350,
+      "completed_at": "2026-06-07T17:20:01",
+      "last_successful_segment_end": 349,
+      "total_pages": 350,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_07/",
+      "title": "Adevărul, iulie 1996 (Anul 8, nr. 1823-1849)",
+      "pages": 356,
+      "completed_at": "2026-06-07T17:49:21",
+      "last_successful_segment_end": 355,
+      "total_pages": 356,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_08/",
+      "title": "Adevărul, august 1996 (Anul 8, nr. 1850-1876)",
+      "pages": 346,
+      "completed_at": "2026-06-07T18:17:52",
+      "last_successful_segment_end": 345,
+      "total_pages": 346,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_09/",
+      "title": "Adevărul, septembrie 1996 (Anul 8, nr. 1877-1901)",
+      "pages": 330,
+      "completed_at": "2026-06-07T18:45:07",
+      "last_successful_segment_end": 329,
+      "total_pages": 330,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_10/",
+      "title": "Adevărul, octombrie 1996 (Anul 8, nr. 1902-1928)",
+      "pages": 388,
+      "completed_at": "2026-06-07T19:16:55",
+      "last_successful_segment_end": 387,
+      "total_pages": 388,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_11/",
+      "title": "Adevărul, noiembrie 1996 (Anul 8, nr. 1929-1954)",
+      "pages": 348,
+      "completed_at": "2026-06-07T19:45:41",
+      "last_successful_segment_end": 347,
+      "total_pages": 348,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1996_12/",
+      "title": "Adevărul, decembrie 1996 (Anul 8, nr. 1955-1978)",
+      "pages": 326,
+      "completed_at": "2026-06-07T20:12:38",
+      "last_successful_segment_end": 325,
+      "total_pages": 326,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1996_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_01/",
+      "title": "Adevărul, ianuarie 1997 (Anul 9, nr. 1980-2001)",
+      "pages": 278,
+      "completed_at": "2026-06-07T20:35:56",
+      "last_successful_segment_end": 277,
+      "total_pages": 278,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_02/",
+      "title": "Adevărul, februarie 1997 (Anul 9, nr. 2004-2025)1997-02-04 / nr. 2004",
+      "pages": 272,
+      "completed_at": "2026-06-08T07:31:02",
+      "last_successful_segment_end": 271,
+      "total_pages": 272,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_03/",
+      "title": "Adevărul, martie 1997 (Anul 9, nr. 2026-2051)1997-03-01 / nr. 2026",
+      "pages": 332,
+      "completed_at": "2026-06-08T10:01:11",
+      "last_successful_segment_end": 331,
+      "total_pages": 332,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_04/",
+      "title": "Adevărul, aprilie 1997 (Anul 9, nr. 2052-2074)",
+      "pages": 334,
+      "completed_at": "2026-06-08T10:28:46",
+      "last_successful_segment_end": 333,
+      "total_pages": 334,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_05/",
+      "title": "Adevărul, mai 1997 (Anul 9, nr. 2075-2100)",
+      "pages": 322,
+      "completed_at": "2026-06-08T10:55:28",
+      "last_successful_segment_end": 321,
+      "total_pages": 322,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_06/",
+      "title": "Adevărul, iunie 1997 (Anul 9, nr. 2101-2125)",
+      "pages": 312,
+      "completed_at": "2026-06-08T11:21:33",
+      "last_successful_segment_end": 311,
+      "total_pages": 312,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_07/",
+      "title": "Adevărul, iulie 1997 (Anul 9, nr. 2126-2152)",
+      "pages": 360,
+      "completed_at": "2026-06-08T11:51:06",
+      "last_successful_segment_end": 359,
+      "total_pages": 360,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_08/",
+      "title": "Adevărul, august 1997 (Anul 9, nr. 2153-2178)",
+      "pages": 348,
+      "completed_at": "2026-06-08T12:19:54",
+      "last_successful_segment_end": 347,
+      "total_pages": 348,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_09/",
+      "title": "Adevărul, septembrie 1997 (Anul 9, nr. 2179-2204)",
+      "pages": 358,
+      "completed_at": "2026-06-08T12:49:42",
+      "last_successful_segment_end": 357,
+      "total_pages": 358,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_10/",
+      "title": "Adevărul, octombrie 1997 (Anul 9, nr. 2205-2231)",
+      "pages": 368,
+      "completed_at": "2026-06-08T13:20:12",
+      "last_successful_segment_end": 367,
+      "total_pages": 368,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_11/",
+      "title": "Adevărul, noiembrie 1997 (Anul 9, nr. 2232-2256)",
+      "pages": 346,
+      "completed_at": "2026-06-08T13:50:23",
+      "last_successful_segment_end": 345,
+      "total_pages": 346,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1997_12/",
+      "title": "Adevărul, decembrie 1997 (Anul 9, nr. 2257-2279)",
+      "pages": 336,
+      "completed_at": "2026-06-08T14:18:24",
+      "last_successful_segment_end": 335,
+      "total_pages": 336,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1997_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_01/",
+      "title": "Adevărul, ianuarie 1998 (Anul 10, nr. 2280-2303)",
+      "pages": 332,
+      "completed_at": "2026-06-08T14:46:05",
+      "last_successful_segment_end": 331,
+      "total_pages": 332,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_02/",
+      "title": "Adevărul, februarie 1998 (Anul 10, nr. 2304-2327)1998-02-02 / nr. 2304",
+      "pages": 352,
+      "completed_at": "2026-06-08T15:15:17",
+      "last_successful_segment_end": 351,
+      "total_pages": 352,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_03/",
+      "title": "Adevărul, martie 1998 (Anul 10, nr. 2328-2353)",
+      "pages": 376,
+      "completed_at": "2026-06-08T15:46:14",
+      "last_successful_segment_end": 375,
+      "total_pages": 376,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_04/",
+      "title": "Adevărul, aprilie 1998 (Anul 10, nr. 2354-2377)",
+      "pages": 384,
+      "completed_at": "2026-06-08T16:18:03",
+      "last_successful_segment_end": 383,
+      "total_pages": 384,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_05/",
+      "title": "Adevărul, mai 1998 (Anul 10, nr. 2378-2401)1998-05-04 / nr. 2378",
+      "pages": 374,
+      "completed_at": "2026-06-08T16:48:38",
+      "last_successful_segment_end": 373,
+      "total_pages": 374,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_06/",
+      "title": "Adevărul, iunie 1998 (Anul 10, nr. 2402-2427)",
+      "pages": 412,
+      "completed_at": "2026-06-08T17:22:01",
+      "last_successful_segment_end": 411,
+      "total_pages": 412,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_07/",
+      "title": "Adevărul, iulie 1998 (Anul 10, nr. 2428-2454)",
+      "pages": 420,
+      "completed_at": "2026-06-08T17:56:10",
+      "last_successful_segment_end": 419,
+      "total_pages": 420,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_08/",
+      "title": "Adevărul, august 1998 (Anul 10, nr. 2455-2480)",
+      "pages": 356,
+      "completed_at": "2026-06-08T18:25:25",
+      "last_successful_segment_end": 355,
+      "total_pages": 356,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_09/",
+      "title": "Adevărul, septembrie 1998 (Anul 10, nr. 2481-2506)",
+      "pages": 360,
+      "completed_at": "2026-06-08T18:55:24",
+      "last_successful_segment_end": 359,
+      "total_pages": 360,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_10/",
+      "title": "Adevărul, octombrie 1998 (Anul 10, nr. 2507-2533)",
+      "pages": 418,
+      "completed_at": "2026-06-08T19:30:39",
+      "last_successful_segment_end": 417,
+      "total_pages": 418,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_11/",
+      "title": "Adevărul, noiembrie 1998 (Anul 10, nr. 2534-2557)",
+      "pages": 400,
+      "completed_at": "2026-06-08T20:04:06",
+      "last_successful_segment_end": 399,
+      "total_pages": 400,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1998_12/",
+      "title": "Adevărul, decembrie 1998 (Anul 10, nr. 2558-2580)1998-12-02 / nr. 2558",
+      "pages": 400,
+      "completed_at": "2026-06-08T20:36:43",
+      "last_successful_segment_end": 399,
+      "total_pages": 400,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1998_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_01/",
+      "title": "Adevărul, ianuarie 1999 (Anul 11, nr. 2581-2604)",
+      "pages": 412,
+      "completed_at": "2026-06-08T21:10:16",
+      "last_successful_segment_end": 411,
+      "total_pages": 412,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_02/",
+      "title": "Adevărul, februarie 1999 (Anul 11, nr. 2605-2628)",
+      "pages": 424,
+      "completed_at": "2026-06-08T21:44:46",
+      "last_successful_segment_end": 423,
+      "total_pages": 424,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_03/",
+      "title": "Adevărul, martie 1999 (Anul 11, nr. 2629-2655)",
+      "pages": 418,
+      "completed_at": "2026-06-08T22:18:56",
+      "last_successful_segment_end": 417,
+      "total_pages": 418,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_04/",
+      "title": "Adevărul, aprilie 1999 (Anul 11, nr. 2656-2680)",
+      "pages": 372,
+      "completed_at": "2026-06-08T22:50:38",
+      "last_successful_segment_end": 371,
+      "total_pages": 372,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_05/",
+      "title": "Adevărul, mai 1999 (Anul 11, nr. 2681-2705)1999-05-03 / nr. 2681",
+      "pages": 396,
+      "completed_at": "2026-06-09T08:47:41",
+      "last_successful_segment_end": 395,
+      "total_pages": 396,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_06/",
+      "title": "Adevărul, iunie 1999 (Anul 11, nr. 2706-2731)",
+      "pages": 420,
+      "completed_at": "2026-06-09T09:23:09",
+      "last_successful_segment_end": 419,
+      "total_pages": 420,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_07/",
+      "title": "Adevărul, iulie 1999 (Anul 11, nr. 2732-2758)1999-07-01 / nr. 2732",
+      "pages": 426,
+      "completed_at": "2026-06-09T10:00:55",
+      "last_successful_segment_end": 425,
+      "total_pages": 426,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_08/",
+      "title": "Adevărul, august 1999 (Anul 11, nr. 2759-2784)",
+      "pages": 434,
+      "completed_at": "2026-06-09T10:40:01",
+      "last_successful_segment_end": 433,
+      "total_pages": 434,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_09/",
+      "title": "Adevărul, septembrie 1999 (Anul 11, nr. 2785-2810)1999-09-01 / nr. 2785",
+      "pages": 420,
+      "completed_at": "2026-06-09T11:18:36",
+      "last_successful_segment_end": 419,
+      "total_pages": 420,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_10/",
+      "title": "Adevărul, octombrie 1999 (Anul 11, nr. 2811-2836)1999-10-01 / nr. 2811",
+      "pages": 436,
+      "completed_at": "2026-06-09T11:58:19",
+      "last_successful_segment_end": 435,
+      "total_pages": 436,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_11/",
+      "title": "Adevărul, noiembrie 1999 (Anul 11, nr. 2837-2862)1999-11-01 / nr. 2837",
+      "pages": 432,
+      "completed_at": "2026-06-09T12:43:20",
+      "last_successful_segment_end": 431,
+      "total_pages": 432,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_1999_12/",
+      "title": "Adevărul, decembrie 1999 (Anul 11, nr. 2863-2886)1999-12-02 / nr. 2863",
+      "pages": 390,
+      "completed_at": "2026-06-09T13:17:52",
+      "last_successful_segment_end": 389,
+      "total_pages": 390,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_1999_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_01/",
+      "title": "Adevărul, ianuarie 2000 (Anul 12, nr. 2887-2910)2000-01-04 / nr. 2887",
+      "pages": 368,
+      "completed_at": "2026-06-09T13:50:15",
+      "last_successful_segment_end": 367,
+      "total_pages": 368,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_02/",
+      "title": "Adevărul, februarie 2000 (Anul 12, nr. 2911-2935)2000-02-01 / nr. 2911",
+      "pages": 400,
+      "completed_at": "2026-06-09T14:25:06",
+      "last_successful_segment_end": 399,
+      "total_pages": 400,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_03/",
+      "title": "Adevărul, martie 2000 (Anul 12, nr. 2936-2962)2000-03-01 / nr. 2936",
+      "pages": 448,
+      "completed_at": "2026-06-09T15:07:35",
+      "last_successful_segment_end": 447,
+      "total_pages": 448,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_04/",
+      "title": "Adevărul, aprilie 2000 (Anul 12, nr. 2963-2987)",
+      "pages": 426,
+      "completed_at": "2026-06-09T15:44:29",
+      "last_successful_segment_end": 425,
+      "total_pages": 426,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_05/",
+      "title": "Adevărul, mai 2000 (Anul 12, nr. 2988-3014)",
+      "pages": 514,
+      "completed_at": "2026-06-09T16:28:23",
+      "last_successful_segment_end": 513,
+      "total_pages": 514,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_06/",
+      "title": "Adevărul, iunie 2000 (Anul 12, nr. 3015-3040)",
+      "pages": 468,
+      "completed_at": "2026-06-09T17:07:27",
+      "last_successful_segment_end": 467,
+      "total_pages": 468,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_07/",
+      "title": "Adevărul, iulie 2000 (Anul 12, nr. 3042-3066)2000-07-03 / nr. 3042",
+      "pages": 364,
+      "completed_at": "2026-06-09T17:38:32",
+      "last_successful_segment_end": 363,
+      "total_pages": 364,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_08/",
+      "title": "Adevărul, august 2000 (Anul 12, nr. 3067-3093)",
+      "pages": 424,
+      "completed_at": "2026-06-09T18:14:12",
+      "last_successful_segment_end": 423,
+      "total_pages": 424,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_09/",
+      "title": "Adevărul, septembrie 2000 (Anul 12, nr. 3094-3119)",
+      "pages": 416,
+      "completed_at": "2026-06-09T18:51:03",
+      "last_successful_segment_end": 415,
+      "total_pages": 416,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_10/",
+      "title": "Adevărul, octombrie 2000 (Anul 12, nr. 3120-3145)",
+      "pages": 456,
+      "completed_at": "2026-06-09T19:31:03",
+      "last_successful_segment_end": 455,
+      "total_pages": 456,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_11/",
+      "title": "Adevărul, noiembrie 2000 (Anul 12, nr. 3146-3171)",
+      "pages": 494,
+      "completed_at": "2026-06-09T20:12:20",
+      "last_successful_segment_end": 493,
+      "total_pages": 494,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2000_12/",
+      "title": "Adevărul, decembrie 2000 (Anul 12, nr. 3172-3193)",
+      "pages": 384,
+      "completed_at": "2026-06-09T20:45:04",
+      "last_successful_segment_end": 383,
+      "total_pages": 384,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2000_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_01/",
+      "title": "Adevărul, ianuarie 2001 (Anul 13, nr. 3194-3218)2001-01-03 / nr. 3194",
+      "pages": 372,
+      "completed_at": "2026-06-09T21:17:04",
+      "last_successful_segment_end": 371,
+      "total_pages": 372,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_02/",
+      "title": "Adevărul, februarie 2001 (Anul 13, nr. 3219-3242)",
+      "pages": 398,
+      "completed_at": "2026-06-09T21:50:41",
+      "last_successful_segment_end": 397,
+      "total_pages": 398,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_03/",
+      "title": "Adevărul, martie 2001 (Anul 13, nr. 3243-3269)",
+      "pages": 424,
+      "completed_at": "2026-06-09T22:26:58",
+      "last_successful_segment_end": 423,
+      "total_pages": 424,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_04/",
+      "title": "Adevărul, aprilie 2001 (Anul 13, nr. 3270-3292)",
+      "pages": 386,
+      "completed_at": "2026-06-10T08:49:35",
+      "last_successful_segment_end": 385,
+      "total_pages": 386,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_05/",
+      "title": "Adevărul, mai 2001 (Anul 13, nr. 3293-3318)",
+      "pages": 446,
+      "completed_at": "2026-06-10T09:25:44",
+      "last_successful_segment_end": 445,
+      "total_pages": 446,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_06/",
+      "title": "Adevărul, iunie 2001 (Anul 13, nr. 3319-3344)",
+      "pages": 444,
+      "completed_at": "2026-06-10T10:01:46",
+      "last_successful_segment_end": 443,
+      "total_pages": 444,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_07/",
+      "title": "Adevărul, iulie 2001 (Anul 13, nr. 3345-3370)",
+      "pages": 384,
+      "completed_at": "2026-06-10T10:33:06",
+      "last_successful_segment_end": 383,
+      "total_pages": 384,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_08/",
+      "title": "Adevărul, august 2001 (Anul 13, nr. 3371-3397)",
+      "pages": 424,
+      "completed_at": "2026-06-10T11:08:21",
+      "last_successful_segment_end": 423,
+      "total_pages": 424,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_09/",
+      "title": "Adevărul, septembrie 2001 (Anul 13, nr. 3398-3422)",
+      "pages": 396,
+      "completed_at": "2026-06-10T11:41:30",
+      "last_successful_segment_end": 395,
+      "total_pages": 396,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_10/",
+      "title": "Adevărul, octombrie 2001 (Anul 13, nr. 3423-3449)",
+      "pages": 444,
+      "completed_at": "2026-06-10T12:18:58",
+      "last_successful_segment_end": 443,
+      "total_pages": 444,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_11/",
+      "title": "Adevărul, noiembrie 2001 (Anul 13, nr. 3450-3475)",
+      "pages": 424,
+      "completed_at": "2026-06-10T12:54:28",
+      "last_successful_segment_end": 423,
+      "total_pages": 424,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2001_12/",
+      "title": "Adevărul, decembrie 2001 (Anul 13, nr. 3476-3497)",
+      "pages": 370,
+      "completed_at": "2026-06-10T13:24:58",
+      "last_successful_segment_end": 369,
+      "total_pages": 370,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2001_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_01/",
+      "title": "Adevărul, ianuarie 2002 (Anul 14, nr. 3498-3521)2002-01-04 / nr. 3498",
+      "pages": 358,
+      "completed_at": "2026-06-10T13:55:51",
+      "last_successful_segment_end": 357,
+      "total_pages": 358,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_02/",
+      "title": "Adevărul, februarie 2002 (Anul 14, nr. 3522-3545)",
+      "pages": 394,
+      "completed_at": "2026-06-10T14:28:38",
+      "last_successful_segment_end": 393,
+      "total_pages": 394,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_03/",
+      "title": "Adevărul, martie 2002 (Anul 14, nr. 3546-3571)",
+      "pages": 456,
+      "completed_at": "2026-06-10T15:06:03",
+      "last_successful_segment_end": 455,
+      "total_pages": 456,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_04/",
+      "title": "Adevărul, aprilie 2002 (Anul 14, nr. 3572-3597)",
+      "pages": 448,
+      "completed_at": "2026-06-10T15:42:44",
+      "last_successful_segment_end": 447,
+      "total_pages": 448,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_05/",
+      "title": "Adevărul, mai 2002 (Anul 14, nr. 3598-3619)",
+      "pages": 392,
+      "completed_at": "2026-06-10T16:15:59",
+      "last_successful_segment_end": 391,
+      "total_pages": 392,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_06/",
+      "title": "Adevărul, iunie 2002 (Anul 14, nr. 3620-3644)",
+      "pages": 414,
+      "completed_at": "2026-06-10T16:50:18",
+      "last_successful_segment_end": 413,
+      "total_pages": 414,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_07/",
+      "title": "Adevărul, iulie 2002 (Anul 14, nr. 3645-3671)",
+      "pages": 446,
+      "completed_at": "2026-06-10T17:26:35",
+      "last_successful_segment_end": 445,
+      "total_pages": 446,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_08/",
+      "title": "Adevărul, august 2002 (Anul 14, nr. 3672-3698)",
+      "pages": 398,
+      "completed_at": "2026-06-10T17:58:56",
+      "last_successful_segment_end": 397,
+      "total_pages": 398,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_09/",
+      "title": "Adevărul, septembrie 2002 (Anul 14, nr. 3699-3723)",
+      "pages": 392,
+      "completed_at": "2026-06-10T18:30:47",
+      "last_successful_segment_end": 391,
+      "total_pages": 392,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_10/",
+      "title": "Adevărul, octombrie 2002 (Anul 14, nr. 3724-3750)",
+      "pages": 416,
+      "completed_at": "2026-06-10T19:04:50",
+      "last_successful_segment_end": 415,
+      "total_pages": 416,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_11/",
+      "title": "Adevărul, noiembrie 2002 (Anul 14, nr. 3751-3776)",
+      "pages": 394,
+      "completed_at": "2026-06-10T19:37:44",
+      "last_successful_segment_end": 393,
+      "total_pages": 394,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2002_12/",
+      "title": "Adevărul, decembrie 2002 (Anul 14, nr. 3777-3799)",
+      "pages": 360,
+      "completed_at": "2026-06-10T20:07:10",
+      "last_successful_segment_end": 359,
+      "total_pages": 360,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2002_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_01/",
+      "title": "Adevărul, ianuarie 2003 (Anul 15, nr. 3800-3823)",
+      "pages": 340,
+      "completed_at": "2026-06-10T20:35:29",
+      "last_successful_segment_end": 339,
+      "total_pages": 340,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_02/",
+      "title": "Adevărul, februarie 2003 (Anul 15, nr. 3824-3847)",
+      "pages": 368,
+      "completed_at": "2026-06-10T21:05:53",
+      "last_successful_segment_end": 367,
+      "total_pages": 368,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_03/",
+      "title": "Adevărul, martie 2003 (Anul 15, nr. 3848-3873)2003-03-01 / nr. 3848",
+      "pages": 388,
+      "completed_at": "2026-06-11T10:05:55",
+      "last_successful_segment_end": 387,
+      "total_pages": 388,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_04/",
+      "title": "Adevărul, aprilie 2003 (Anul 15, nr. 3874-3896)",
+      "pages": 372,
+      "completed_at": "2026-06-11T10:37:32",
+      "last_successful_segment_end": 371,
+      "total_pages": 372,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_05/",
+      "title": "Adevărul, mai 2003 (Anul 15, nr. 3897-3922)",
+      "pages": 420,
+      "completed_at": "2026-06-11T11:13:42",
+      "last_successful_segment_end": 419,
+      "total_pages": 420,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_06/",
+      "title": "Adevărul, iunie 2003 (Anul 15, nr. 3923-3947)",
+      "pages": 412,
+      "completed_at": "2026-06-11T11:49:01",
+      "last_successful_segment_end": 411,
+      "total_pages": 412,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_07/",
+      "title": "Adevărul, iulie 2003 (Anul 15, nr. 3948-3974)",
+      "pages": 436,
+      "completed_at": "2026-06-11T12:25:42",
+      "last_successful_segment_end": 435,
+      "total_pages": 436,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_07.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_08/",
+      "title": "Adevărul, august 2003 (Anul 15, nr. 3975-4001)",
+      "pages": 436,
+      "completed_at": "2026-06-11T13:02:46",
+      "last_successful_segment_end": 435,
+      "total_pages": 436,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_08.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_09/",
+      "title": "Adevărul, septembrie 2003 (Anul 15, nr. 4002-4027)",
+      "pages": 468,
+      "completed_at": "2026-06-11T13:42:35",
+      "last_successful_segment_end": 467,
+      "total_pages": 468,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_09.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_10/",
+      "title": "Adevărul, octombrie 2003 (Anul 15, nr. 4027-4053)",
+      "pages": 452,
+      "completed_at": "2026-06-11T14:21:13",
+      "last_successful_segment_end": 451,
+      "total_pages": 452,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_10.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_11/",
+      "title": "Adevărul, noiembrie 2003 (Anul 15, nr. 4054-4078)",
+      "pages": 426,
+      "completed_at": "2026-06-11T14:57:25",
+      "last_successful_segment_end": 425,
+      "total_pages": 426,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_11.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2003_12/",
+      "title": "Adevărul, decembrie 2003 (Anul 15, nr. 4079-4101)2003-12-02 / nr. 4079",
+      "pages": 416,
+      "completed_at": "2026-06-11T15:33:46",
+      "last_successful_segment_end": 415,
+      "total_pages": 416,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2003_12.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2004_01/",
+      "title": "Adevărul, ianuarie 2004 (Anul 16, nr. 4102-4125)",
+      "pages": 366,
+      "completed_at": "2026-06-11T16:04:36",
+      "last_successful_segment_end": 365,
+      "total_pages": 366,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2004_01.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2004_02/",
+      "title": "Adevărul, februarie 2004 (Anul 16, nr. 4126-4149)",
+      "pages": 376,
+      "completed_at": "2026-06-11T16:36:38",
+      "last_successful_segment_end": 375,
+      "total_pages": 376,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2004_02.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2004_03/",
+      "title": "Adevărul, martie 2004 (Anul 16, nr. 4150-4176)",
+      "pages": 456,
+      "completed_at": "2026-06-11T17:14:53",
+      "last_successful_segment_end": 455,
+      "total_pages": 456,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2004_03.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2004_04/",
+      "title": "Adevărul, aprilie 2004 (Anul 16, nr. 4177-4200)2004-04-01 / nr. 4177",
+      "pages": 462,
+      "completed_at": "2026-06-11T17:53:30",
+      "last_successful_segment_end": 461,
+      "total_pages": 462,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2004_04.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2004_05/",
+      "title": "Adevărul, mai 2004 (Anul 16, nr. 4201-4225)2004-05-03 / nr. 4201",
+      "pages": 508,
+      "completed_at": "2026-06-11T18:36:15",
+      "last_successful_segment_end": 507,
+      "total_pages": 508,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2004_05.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2004_06/",
+      "title": "Adevărul, iunie 2004 (Anul 16, nr. 4226-4251)",
+      "pages": 506,
+      "completed_at": "2026-06-11T19:18:53",
+      "last_successful_segment_end": 505,
+      "total_pages": 506,
+      "pdf": "G:\\AdevarulJurnalAradean\\AdevarulJurnalAradean_2004_06.pdf"
+    },
+    {
+      "url": "https://adt.arcanum.com/ro/view/AdevarulJurnalAradean_2004_07/",
+      "title": "Adevărul, iulie 2004 (Anul 16, nr. 4252-4278)2004-07-01 / nr. 4252",
+      "pages": 264,
+      "completed_at": null,
+      "last_successful_segment_end": 263,
+      "total_pages": 456,
       "pdf": null
     }
   ]
