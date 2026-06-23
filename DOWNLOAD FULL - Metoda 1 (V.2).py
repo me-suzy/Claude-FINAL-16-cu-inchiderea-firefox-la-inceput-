@@ -52,6 +52,54 @@ from selenium.common.exceptions import WebDriverException
 import urllib3
 from PIL import Image
 
+
+RUN_LOG_FILE = None
+
+
+class _Tee:
+    def __init__(self, *streams):
+        self.streams = streams
+        self.encoding = getattr(streams[0], "encoding", "utf-8")
+        self.errors = getattr(streams[0], "errors", "replace")
+
+    def write(self, data):
+        for stream in self.streams:
+            try:
+                stream.write(data)
+                stream.flush()
+            except Exception:
+                pass
+
+    def flush(self):
+        for stream in self.streams:
+            try:
+                stream.flush()
+            except Exception:
+                pass
+
+    def isatty(self):
+        return any(getattr(stream, "isatty", lambda: False)() for stream in self.streams)
+
+
+def setup_run_logging():
+    """Salveaza si consola scriptului, nu doar logul geckodriver."""
+    global RUN_LOG_FILE
+    if RUN_LOG_FILE is not None:
+        return getattr(RUN_LOG_FILE, "name", None)
+    try:
+        log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Logs")
+        os.makedirs(log_dir, exist_ok=True)
+        path = os.path.join(log_dir, f"metoda1_run_{datetime.now():%Y%m%d_%H%M%S}.log")
+        RUN_LOG_FILE = open(path, "a", encoding="utf-8", buffering=1)
+        sys.stdout = _Tee(sys.stdout, RUN_LOG_FILE)
+        sys.stderr = _Tee(sys.stderr, RUN_LOG_FILE)
+        print(f"Log rulare Metoda 1: {path}")
+        return path
+    except Exception as e:
+        print(f"(nu pot activa log rulare Metoda 1: {e})")
+        return None
+
+
 # erori care inseamna "browserul/geckodriver a murit" -> recuperam (restart)
 # include si ConnectionRefused (geckodriver omorat de alta instanta / scriptul mare): WinError 10061 = OSError
 BROWSER_DOWN_ERRORS = (WebDriverException, urllib3.exceptions.HTTPError, ConnectionError, OSError)
@@ -62,12 +110,12 @@ ADDITIONAL_COLLECTIONS = [
     # "https://adt.arcanum.com/ro/collection/ITTrends/",
     # "https://adt.arcanum.com/ro/collection/SzatmariMuzeumKiadvanyai_Evkonyv_ADT/",
     # "https://adt.arcanum.com/ro/collection/Afirmarea/",
-    "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/",
-    "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=1990#collection-contents",
-    "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2000#collection-contents",
-    "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2010#collection-contents",
-    "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2020#collection-contents",
-    "https://adt.arcanum.com/ro/collection/Radiofonia1925/",
+    # "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/",
+    # "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=1990#collection-contents",
+    # "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2000#collection-contents",
+    # "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2010#collection-contents",
+    # "https://adt.arcanum.com/ro/collection/AdevarulJurnalAradean/?decade=2020#collection-contents",
+    # "https://adt.arcanum.com/ro/collection/Radiofonia1925/",
     "https://adt.arcanum.com/ro/collection/Flacara/",
     "https://adt.arcanum.com/ro/collection/Flacara/?decade=1960#collection-contents",
     "https://adt.arcanum.com/ro/collection/Flacara/?decade=1970#collection-contents",
@@ -133,7 +181,7 @@ _FIRST_PRE_SAVE_BACKUP_DONE = False
 
 # Aceleasi date de login folosite de scriptul mare. Variabilele de mediu au prioritate.
 ARCANUM_USERNAME = os.environ.get("ARCANUM_USERNAME", "YOUR@gmail.com")
-ARCANUM_PASSWORD = os.environ.get("ARCANUM_PASSWORD", "YOUR-PASS")
+ARCANUM_PASSWORD = os.environ.get("ARCANUM_PASSWORD", "PASSWORD")
 
 PAGE_WAIT = 4      # secunde de asteptare intre pagini (cerinta)
 PDF_WAIT  = 120    # 2 minute pauza dupa PDF-ul fiecarui document
@@ -1322,6 +1370,19 @@ def build_pdf(image_paths, pdf_path, total_pages):
     os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
     tmp = pdf_path + ".part"
 
+    def remove_tmp(reason):
+        if os.path.exists(tmp):
+            try:
+                size = os.path.getsize(tmp)
+                os.remove(tmp)
+                print(f"   sterg PDF .part vechi ({reason}, {size} bytes): {tmp}")
+            except Exception as e:
+                print(f"   nu pot sterge PDF .part vechi ({reason}): {e}")
+
+    remove_tmp("rulare anterioara intrerupta")
+    total_mb = sum(os.path.getsize(p) for p in image_paths) / (1024 * 1024)
+    print(f"   construiesc PDF: {len(image_paths)} pagini, imagini {total_mb:.1f} MB -> {pdf_path}")
+
     # 1) img2pdf = inglobeaza JPEG-urile direct, FARA decodare -> memorie/CPU minime
     try:
         import img2pdf
@@ -1331,32 +1392,58 @@ def build_pdf(image_paths, pdf_path, total_pages):
             layout = None
         for attempt in range(3):
             try:
+                remove_tmp(f"retry img2pdf {attempt + 1}")
                 with open(tmp, "wb") as f:
+                    kwargs = {"outputstream": f}
+                    engine = getattr(getattr(img2pdf, "Engine", None), "pikepdf", None)
+                    if engine is not None:
+                        kwargs["engine"] = engine
                     if layout:
-                        f.write(img2pdf.convert(image_paths, layout_fun=layout))
-                    else:
-                        f.write(img2pdf.convert(image_paths))
+                        kwargs["layout_fun"] = layout
+                    img2pdf.convert(image_paths, **kwargs)
+                if os.path.getsize(tmp) < 1024:
+                    raise RuntimeError(f"PDF .part prea mic ({os.path.getsize(tmp)} bytes)")
                 os.replace(tmp, pdf_path)
-                print(f"   PDF salvat (img2pdf): {pdf_path}  ({len(image_paths)} pagini)")
+                print(f"   PDF salvat (img2pdf streaming): {pdf_path}  ({len(image_paths)} pagini)")
                 return True
             except Exception as e:
-                print(f"   img2pdf incercare {attempt + 1}/3 esuata: {str(e)[:120]}")
+                print(f"   img2pdf incercare {attempt + 1}/3 esuata: {type(e).__name__}: {str(e)[:160]}")
+                remove_tmp(f"img2pdf esuat {attempt + 1}")
                 time.sleep(2)
     except Exception as e:
-        print(f"   (img2pdf indisponibil: {e}) - folosesc PIL")
+        print(f"   (img2pdf indisponibil: {e}) - verific fallback PIL")
 
-    # 2) fallback PIL (decodeaza in memorie - mai greu)
+    # 2) fallback PIL. La documente mari nu il folosim: incarca toate paginile in RAM.
+    if len(image_paths) > 120 or total_mb > 250:
+        print("   !! img2pdf a esuat; NU folosesc fallback PIL pentru document mare.")
+        print("   !! Las documentul neterminat ca sa se reinceapa PDF-ul curat la urmatoarea rulare.")
+        return False
+
     imgs = []
-    for p in image_paths:
-        im = open_image_robust(p)
-        if im is None:
-            print("   !! NU fac PDF (o pagina e ilizibila) - se reincearca la urmatoarea rulare")
-            return False
-        imgs.append(im)
-    imgs[0].save(tmp, "PDF", resolution=200.0, save_all=True, append_images=imgs[1:])
-    os.replace(tmp, pdf_path)
-    print(f"   PDF salvat (PIL): {pdf_path}  ({len(imgs)} pagini)")
-    return True
+    try:
+        for p in image_paths:
+            im = open_image_robust(p)
+            if im is None:
+                print("   !! NU fac PDF (o pagina e ilizibila) - se reincearca la urmatoarea rulare")
+                return False
+            imgs.append(im)
+        remove_tmp("fallback PIL")
+        imgs[0].save(tmp, "PDF", resolution=200.0, save_all=True, append_images=imgs[1:])
+        if os.path.getsize(tmp) < 1024:
+            raise RuntimeError(f"PDF .part prea mic ({os.path.getsize(tmp)} bytes)")
+        os.replace(tmp, pdf_path)
+        print(f"   PDF salvat (PIL): {pdf_path}  ({len(imgs)} pagini)")
+        return True
+    except Exception as e:
+        print(f"   !! PDF PIL esuat: {type(e).__name__}: {str(e)[:160]}")
+        remove_tmp("PIL esuat")
+        return False
+    finally:
+        for im in imgs:
+            try:
+                im.close()
+            except Exception:
+                pass
 
 
 def finalize_pending_pdfs(state):
@@ -1680,4 +1767,5 @@ def main():
 
 
 if __name__ == "__main__":
+    setup_run_logging()
     main()
