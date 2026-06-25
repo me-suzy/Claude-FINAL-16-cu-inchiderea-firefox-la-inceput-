@@ -37,7 +37,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set
 
 from PIL import Image
 
@@ -71,8 +71,8 @@ MIN_PNG_BYTES = 2_048
 
 USER_ENV = "MAGAZIN_ISTORIC_USERNAME"
 PASS_ENV = "MAGAZIN_ISTORIC_PASSWORD"
-DEFAULT_USERNAME = "ioan.fantanaru"
-DEFAULT_PASSWORD = "fant8472+"
+DEFAULT_USERNAME = "YOUR-USER"
+DEFAULT_PASSWORD = "YOUR-PASS"
 
 RUN_LOG_FILE = None
 
@@ -208,14 +208,9 @@ def upsert_entry(
     return entry
 
 
-def issue_is_complete(entry: Optional[Dict], pdf_path: Path) -> bool:
-    return bool(
-        entry
-        and entry.get("completed_at")
-        and entry.get("pdf")
-        and pdf_path.exists()
-        and pdf_path.stat().st_size > 1024
-    )
+def issue_is_complete(entry: Optional[Dict]) -> bool:
+    # PDF-urile pot fi mutate dupa upload; state-ul este sursa adevarului.
+    return bool(entry and entry.get("completed_at") and entry.get("pdf"))
 
 
 def issue_reader_base(issue: Dict) -> str:
@@ -749,7 +744,7 @@ def build_pdf(image_paths: Sequence[Path], pdf_path: Path, total_pages: int) -> 
 
 def capture_issue(
     mi,
-    drv: webdriver.Firefox,
+    get_driver: Callable[[], webdriver.Firefox],
     session,
     state: Dict,
     issue: Dict,
@@ -759,7 +754,7 @@ def capture_issue(
     stage_dir = stage_dir_for(issue)
     pdf_path = pdf_path_for(mi, issue)
     entry = get_entry(state, code)
-    if issue_is_complete(entry, pdf_path) and not args.force:
+    if issue_is_complete(entry) and not args.force:
         print(f"\n=== {code}: deja complet in state-rendered.json, sar ===")
         return
 
@@ -783,13 +778,40 @@ def capture_issue(
         target_pages = {p for p in only_pages if 1 <= p <= total_pages}
         print(f"  [TEST] capturez doar paginile: {sorted(target_pages)}")
 
-    ensure_viewer_loaded(drv, issue, args, mi.COOKIE_PATH)
-
     done = set() if args.force_pages else existing_pages(stage_dir)
     pages_done = len(done.intersection(set(range(1, total_pages + 1))))
     last_page = max(done) if done else 0
     fail_counts: Dict[int, int] = {}
     max_page_retries = max(1, int(args.max_page_retries))
+    full_files = [page_path(stage_dir, p) for p in range(1, total_pages + 1)]
+    complete_png = all(p.exists() and p.stat().st_size > 1024 for p in full_files)
+
+    if (
+        complete_png
+        and not args.force_pages
+        and not args.no_pdf
+        and not only_pages
+        and not args.max_pages
+        ):
+        print(f"  capturi complete gasite in temporare: {total_pages}/{total_pages}; fac PDF fara browser.")
+        if build_pdf(full_files, pdf_path, total_pages):
+            upsert_entry(
+                state,
+                issue,
+                title,
+                total_pages,
+                stage_dir,
+                total_pages,
+                total_pages,
+                completed=True,
+                pdf_path=pdf_path,
+            )
+            if args.pdf_wait:
+                time.sleep(args.pdf_wait)
+        return
+
+    drv = get_driver()
+    ensure_viewer_loaded(drv, issue, args, mi.COOKIE_PATH)
 
     while True:
         missing = sorted(p for p in target_pages if p not in done)
@@ -843,7 +865,6 @@ def capture_issue(
         time.sleep(0.25)
 
     files = collect_pages(stage_dir)
-    full_files = [page_path(stage_dir, p) for p in range(1, total_pages + 1)]
     complete = all(p.exists() and p.stat().st_size > 1024 for p in full_files)
 
     if args.no_pdf or only_pages or args.max_pages:
@@ -930,17 +951,20 @@ def main() -> None:
         return
 
     drv: Optional[webdriver.Firefox] = None
+
+    def get_driver() -> webdriver.Firefox:
+        nonlocal drv
+        if drv is None:
+            drv = start_browser(args)
+            load_driver_cookies(drv, mi.COOKIE_PATH)
+        return drv
+
     try:
-        drv = start_browser(args)
-        load_driver_cookies(drv, mi.COOKIE_PATH)
         for issue in issues:
             driver_restarts = 0
             while True:
                 try:
-                    if drv is None:
-                        drv = start_browser(args)
-                        load_driver_cookies(drv, mi.COOKIE_PATH)
-                    capture_issue(mi, drv, session, state, issue, args)
+                    capture_issue(mi, get_driver, session, state, issue, args)
                     break
                 except KeyboardInterrupt:
                     print("\n[oprit manual] progresul rendered este salvat.")
