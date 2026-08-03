@@ -165,6 +165,26 @@ def _copy_profile_essential(src):
                 shutil.copy2(s, target)
         except Exception as copy_error:
             print(f"   AVERTISMENT profil: nu am putut copia {name}: {copy_error}")
+
+    # Nu luam sesiuni/taburi/downloaduri vechi din profilul real. Doar loginul conteaza.
+    for stale_name in [
+        "sessionstore.jsonlz4",
+        "sessionstore-backups",
+        "downloads.json",
+        "places.sqlite-shm",
+        "places.sqlite-wal",
+        "recovery.jsonlz4",
+        "previous.jsonlz4",
+    ]:
+        stale_path = os.path.join(dst, stale_name)
+        try:
+            if os.path.isdir(stale_path):
+                shutil.rmtree(stale_path, ignore_errors=True)
+            elif os.path.exists(stale_path):
+                os.remove(stale_path)
+        except Exception:
+            pass
+
     # IZOLARE DE SESIUNE: dupa un restart, prefs.js are flag-uri de "restaurare sesiune/crash"
     # care fac noua instanta sa se inchida imediat ("Process unexpectedly closed status 0").
     # user.js se aplica PESTE prefs.js la fiecare pornire -> dezactiveaza restaurarea.
@@ -172,9 +192,16 @@ def _copy_profile_essential(src):
         with open(os.path.join(dst, "user.js"), "w", encoding="utf-8") as uf:
             uf.write(
                 'user_pref("browser.startup.page", 0);\n'                       # pornire pe pagina goala
+                'user_pref("browser.startup.homepage", "about:blank");\n'
                 'user_pref("browser.sessionstore.resume_from_crash", false);\n'
+                'user_pref("browser.sessionstore.restore_on_demand", false);\n'
+                'user_pref("browser.sessionstore.restore_tabs_lazily", false);\n'
+                'user_pref("browser.sessionstore.max_tabs_undo", 0);\n'
+                'user_pref("browser.sessionstore.max_windows_undo", 0);\n'
                 'user_pref("browser.sessionstore.max_resumed_crashes", 0);\n'
                 'user_pref("toolkit.startup.max_resumed_crashes", -1);\n'       # nu arata "recuperare sesiune"
+                'user_pref("browser.download.manager.resumeOnWakeDelay", 0);\n'
+                'user_pref("browser.download.alwaysOpenPanel", false);\n'
                 'user_pref("browser.shell.checkDefaultBrowser", false);\n'
                 'user_pref("browser.startup.homepage_override.mstone", "ignore");\n'
             )
@@ -408,6 +435,7 @@ ADDITIONAL_COLLECTIONS = [
     "https://adt.arcanum.com/ro/collection/BuletinulStiintificTechnicInstitutuluiPolitehnicTimisoara_Electrotehnica/",
     "https://adt.arcanum.com/ro/collection/BuletinulStiintificTechnicInstitutuluiPolitehnicTimisoara_MatematicaFizicaMecanica/",
     "https://adt.arcanum.com/ro/collection/BuletinulStiintificTechnicInstitutuluiPolitehnicTimisoara_Mecanica/",
+    "https://adt.arcanum.com/ro/collection/DosareleIstoriei/",
     "https://adt.arcanum.com/ro/collection/NaturaSeriaBiologie/",
     "https://adt.arcanum.com/ro/collection/RevistaDeFizicaSiChimie/",
     "https://adt.arcanum.com/ro/collection/RevistaDePsihologie/",
@@ -1248,9 +1276,12 @@ class ChromePDFDownloader:
         print(f"❌ Segmentul {start}-{end}: nu a aparut niciun PDF valid pe disk in {timeout}s.")
         return "missing", None
 
-    def get_existing_pdf_segments(self, issue_url):
+    def get_existing_pdf_segments(self, issue_url, issue_title=None):
         """FIXED: Scanează toate segmentele existente și returnează ultima pagină"""
-        segments = self.get_all_pdf_segments_for_issue(issue_url)
+        if hasattr(self, "get_all_pdf_segments_for_issue_anywhere"):
+            segments = self.get_all_pdf_segments_for_issue_anywhere(issue_url, issue_title)
+        else:
+            segments = self.get_all_pdf_segments_for_issue(issue_url)
 
         if not segments:
             return 0
@@ -1284,9 +1315,12 @@ class ChromePDFDownloader:
 
         return real_progress
 
-    def get_existing_pdf_consecutive_progress(self, issue_url, total_pages):
+    def get_existing_pdf_consecutive_progress(self, issue_url, total_pages, issue_title=None):
         """Scaneaza disk-ul si returneaza progresul real consecutiv, nu doar ultimul fisier."""
-        segments = self.get_all_pdf_segments_for_issue(issue_url)
+        if hasattr(self, "get_all_pdf_segments_for_issue_anywhere"):
+            segments = self.get_all_pdf_segments_for_issue_anywhere(issue_url, issue_title)
+        else:
+            segments = self.get_all_pdf_segments_for_issue(issue_url)
         progress = self.calculate_consecutive_progress_from_segments(segments, total_pages)
         if segments:
             max_page = max(seg['end'] for seg in segments)
@@ -1311,7 +1345,7 @@ class ChromePDFDownloader:
 
         # Segmentele următoare: bs până la final
         current_start = bs
-        while current_start < total_pages:
+        while current_start <= total_pages:
             current_end = min(current_start + bs - 1, total_pages)
             expected_segments.append((current_start, current_end))
             current_start += bs
@@ -1330,7 +1364,12 @@ class ChromePDFDownloader:
         expected_segments = self.calculate_expected_segments(total_pages)
 
         # Obține segmentele existente pe disk
-        existing_segments = self.get_all_pdf_segments_for_issue(issue_url)
+        item = self.find_issue_state_item(issue_url) if hasattr(self, "find_issue_state_item") else None
+        issue_title = (item or {}).get("title", "")
+        if hasattr(self, "get_all_pdf_segments_for_issue_anywhere"):
+            existing_segments = self.get_all_pdf_segments_for_issue_anywhere(issue_url, issue_title)
+        else:
+            existing_segments = self.get_all_pdf_segments_for_issue(issue_url)
 
         # Creează set-uri pentru comparație
         expected_set = set(expected_segments)
@@ -1379,6 +1418,15 @@ class ChromePDFDownloader:
 
         # Grupează fișierele după issue ID
         issues_on_disk = {}
+        completed_state_urls = {
+            self._normalize_issue_url(item.get("url", ""))
+            for item in self.state.get("downloaded_issues", [])
+            if item.get("completed_at") and item.get("pages", 0) > 0
+        }
+        pending_pdf_urls = {
+            self._normalize_issue_url(item.get("url", ""))
+            for item in self.state.get("pending_pdf_finalizations", [])
+        }
 
         try:
             for filename in os.listdir(self.download_dir):
@@ -1396,12 +1444,18 @@ class ChromePDFDownloader:
 
                 start_page = int(match.group(1))
                 end_page = int(match.group(2))
+                url = self.extract_issue_url_from_filename(filename)
+                normalized_url = self._normalize_issue_url(url)
+
+                if normalized_url in completed_state_urls and normalized_url not in pending_pdf_urls:
+                    print(f"   SKIP fragment root pentru issue deja complet: {filename}")
+                    continue
 
                 if issue_id not in issues_on_disk:
                     issues_on_disk[issue_id] = {
                         'segments': [],
                         'max_page': 0,
-                        'url': self.extract_issue_url_from_filename(filename)
+                        'url': url
                     }
 
                 issues_on_disk[issue_id]['segments'].append({
@@ -1929,7 +1983,10 @@ class ChromePDFDownloader:
                 continue
 
             # Scanează disk-ul pentru acest issue (doar pentru parțiale/incomplete)
-            actual_segments = self.get_all_pdf_segments_for_issue(url)
+            if hasattr(self, "get_all_pdf_segments_for_issue_anywhere"):
+                actual_segments = self.get_all_pdf_segments_for_issue_anywhere(url, item.get("title", ""))
+            else:
+                actual_segments = self.get_all_pdf_segments_for_issue(url)
 
             if actual_segments:
                 # === CALCUL CORECT: Găsește progresul REAL CONSECUTIV de pe disk ===
@@ -2220,6 +2277,7 @@ class ChromePDFDownloader:
                     "downloaded_issues": existing_issues,  # TOATE PĂSTRATE
                     "pages_downloaded": loaded.get("pages_downloaded", 0),
                     "recent_links": loaded.get("recent_links", []),
+                    "pending_pdf_finalizations": loaded.get("pending_pdf_finalizations", []),
                     "daily_limit_hit": False,
                     "main_collection_completed": loaded.get("main_collection_completed", False),
                     "current_additional_collection_index": loaded.get("current_additional_collection_index", 0)
@@ -2258,6 +2316,7 @@ class ChromePDFDownloader:
                     "downloaded_issues": [],
                     "pages_downloaded": 0,
                     "recent_links": [],
+                    "pending_pdf_finalizations": [],
                     "daily_limit_hit": False,
                     "main_collection_completed": False,
                     "current_additional_collection_index": 0
@@ -2270,6 +2329,7 @@ class ChromePDFDownloader:
                 "downloaded_issues": [],
                 "pages_downloaded": 0,
                 "recent_links": [],
+                "pending_pdf_finalizations": [],
                 "daily_limit_hit": False,
                 "main_collection_completed": False,
                 "current_additional_collection_index": 0
@@ -3022,6 +3082,14 @@ class ChromePDFDownloader:
                     firefox_options.set_preference("browser.download.useDownloadDir", True)
                     firefox_options.set_preference("browser.helperApps.neverAsk.saveToDisk", "application/pdf")
                     firefox_options.set_preference("pdfjs.disabled", True)
+                    firefox_options.set_preference("browser.startup.page", 0)
+                    firefox_options.set_preference("browser.startup.homepage", "about:blank")
+                    firefox_options.set_preference("browser.sessionstore.resume_from_crash", False)
+                    firefox_options.set_preference("browser.sessionstore.restore_on_demand", False)
+                    firefox_options.set_preference("browser.sessionstore.restore_tabs_lazily", False)
+                    firefox_options.set_preference("browser.sessionstore.max_tabs_undo", 0)
+                    firefox_options.set_preference("browser.sessionstore.max_windows_undo", 0)
+                    firefox_options.set_preference("browser.download.alwaysOpenPanel", False)
 
                     gecko_log = os.path.join(
                         gecko_log_dir,
@@ -4536,12 +4604,12 @@ class ChromePDFDownloader:
 
                     if not current_username:
                         username_field.clear()
-                        username_field.send_keys("YOUR@gmail.com")
+                        username_field.send_keys("oanaaaa08@gmail.com")
                         print("✅ Username completat")
 
                     if not current_password:
                         password_field.clear()
-                        password_field.send_keys("YOUR-PASS")
+                        password_field.send_keys("h;Uo3n*D;)kT9")
                         print("✅ Parolă completată")
 
                 # PASUL 5: Așteaptă puțin și apoi submit
@@ -5513,7 +5581,12 @@ class ChromePDFDownloader:
         print(f"🔍 VERIFICARE CRITICĂ: Scanez completitudinea segmentelor pentru {issue_url}")
 
         # PASUL 1: Obține toate segmentele de pe disk
-        all_segments = self.get_all_pdf_segments_for_issue(issue_url)
+        item = self.find_issue_state_item(issue_url) if hasattr(self, "find_issue_state_item") else None
+        issue_title = (item or {}).get("title", "")
+        if hasattr(self, "get_all_pdf_segments_for_issue_anywhere"):
+            all_segments = self.get_all_pdf_segments_for_issue_anywhere(issue_url, issue_title)
+        else:
+            all_segments = self.get_all_pdf_segments_for_issue(issue_url)
 
         if not all_segments:
             print(f"❌ Nu am găsit niciun segment!")
@@ -6264,7 +6337,50 @@ class ChromePDFDownloader:
 
         return True
 
-    def process_completed_but_unfinalized_issues(self):
+    def queue_pending_pdf_finalization(self, issue_url, title="", subtitle="", total_pages=None, reason=""):
+        """Persistenta pentru crash/restart: acest issue are nevoie de PDF final."""
+        normalized = self._normalize_issue_url(issue_url)
+        if not normalized:
+            return
+
+        queue = self.state.setdefault("pending_pdf_finalizations", [])
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        existing = None
+        for item in queue:
+            if self._normalize_issue_url(item.get("url", "")) == normalized:
+                existing = item
+                break
+
+        data = {
+            "url": normalized,
+            "title": title or "",
+            "subtitle": subtitle or "",
+            "total_pages": total_pages,
+            "reason": reason or "pdf final neconfirmat",
+            "updated_at": now_iso
+        }
+
+        if existing:
+            existing.update(data)
+        else:
+            data["created_at"] = now_iso
+            queue.insert(0, data)
+
+        # Pastreaza coada scurta, dar suficienta pentru reluari reale.
+        self.state["pending_pdf_finalizations"] = queue[:100]
+        self._save_state_safe()
+        print(f"BACKLOG PDF: adaugat/actualizat pentru finalizare: {normalized}")
+
+    def clear_pending_pdf_finalization(self, issue_url):
+        normalized = self._normalize_issue_url(issue_url)
+        queue = self.state.get("pending_pdf_finalizations", [])
+        new_queue = [item for item in queue if self._normalize_issue_url(item.get("url", "")) != normalized]
+        if len(new_queue) != len(queue):
+            self.state["pending_pdf_finalizations"] = new_queue
+            self._save_state_safe()
+            print(f"BACKLOG PDF: scos din coada finalizata: {normalized}")
+
+    def process_completed_but_unfinalized_issues(self, candidate_urls=None, include_recent_completed=True):
         """
         Repara doua cazuri:
         1. issue descarcat complet, dar inca nemarcat complet in JSON;
@@ -6278,6 +6394,42 @@ class ChromePDFDownloader:
 
         issues_to_finalize = []
         seen_urls = set()
+        allowed_urls = set(self._normalize_issue_url(u) for u in (candidate_urls or []) if u)
+        queued_by_url = {}
+
+        for queued in self.state.get("pending_pdf_finalizations", []):
+            queued_url = self._normalize_issue_url(queued.get("url", ""))
+            if queued_url:
+                allowed_urls.add(queued_url)
+                queued_by_url[queued_url] = queued
+
+        if not allowed_urls:
+            recent_complete_limit = 15
+            recent_complete_count = 0
+
+            for issue in self.state.get("downloaded_issues", []):
+                url = issue.get("url", "")
+                if not url:
+                    continue
+
+                normalized = self._normalize_issue_url(url)
+                total_pages = issue.get("total_pages", 0) or 0
+                completed_at = issue.get("completed_at", "")
+                pages = issue.get("pages", 0)
+
+                # Intotdeauna verifica issue-urile active/nemarcate complet.
+                if total_pages > 0 and not completed_at and pages == 0:
+                    allowed_urls.add(normalized)
+                    continue
+
+                # Pentru issue-uri deja marcate complet, verifica doar cele recente.
+                # Altfel se apuca de colectii istorice care nu fac parte din rularea curenta.
+                if include_recent_completed and completed_at and pages > 0 and recent_complete_count < recent_complete_limit:
+                    allowed_urls.add(normalized)
+                    recent_complete_count += 1
+
+        if allowed_urls:
+            print(f"Scope verificare merge: {len(allowed_urls)} issue-uri active/recente")
 
         for issue in self.state.get("downloaded_issues", []):
             url = issue.get("url", "")
@@ -6285,6 +6437,9 @@ class ChromePDFDownloader:
                 continue
 
             normalized = self._normalize_issue_url(url)
+            if allowed_urls and normalized not in allowed_urls:
+                continue
+
             if normalized in seen_urls:
                 continue
 
@@ -6298,39 +6453,82 @@ class ChromePDFDownloader:
             if total_pages <= 0:
                 continue
 
+            state_queued = normalized in queued_by_url
+            final_exists = self.issue_final_pdf_exists(url, title)
+            disk_progress = 0
+
+            if not completed_at or state_queued:
+                segments_anywhere = self.get_all_pdf_segments_for_issue_anywhere(url, title)
+                disk_progress = self.calculate_consecutive_progress_from_segments(segments_anywhere, total_pages)
+                if disk_progress > last_segment and not completed_at and pages == 0:
+                    issue["last_successful_segment_end"] = disk_progress
+                    last_segment = disk_progress
+                    self._save_state_safe()
+                    print(f"REPARAT: progres local pentru {normalized}: {disk_progress}/{total_pages} pagini gasite pe disk/folder.")
+
             downloaded_complete = last_segment >= total_pages
             state_unfinalized = downloaded_complete and not completed_at and pages == 0
             state_complete = downloaded_complete and bool(completed_at) and pages > 0
-            final_exists = self.issue_final_pdf_exists(url, title)
+            disk_complete_unfinalized = disk_progress >= total_pages and not completed_at and pages == 0
 
-            if state_unfinalized:
+            if state_unfinalized or disk_complete_unfinalized or (state_queued and not state_complete):
+                if state_unfinalized or disk_complete_unfinalized:
+                    self.queue_pending_pdf_finalization(
+                        normalized, title=title, subtitle=subtitle,
+                        total_pages=total_pages,
+                        reason="segmente descarcate complet, PDF final neconfirmat"
+                    )
                 issues_to_finalize.append({
                     "url": normalized,
                     "title": title,
                     "subtitle": subtitle,
                     "total_pages": total_pages,
                     "already_marked": False,
-                    "reason": "descarcat complet, nemarcat in JSON"
+                    "reason": "in coada PDF sau descarcat complet, nemarcat in JSON"
                 })
                 seen_urls.add(normalized)
                 print(f"GASIT: {normalized} ({last_segment}/{total_pages}) - nemarcat complet")
                 continue
 
-            if state_complete and not final_exists:
+            if state_complete and (not final_exists or state_queued):
                 segments = self.get_all_pdf_segments_for_issue_anywhere(url, title)
-                if segments:
-                    progress = self.calculate_consecutive_progress_from_segments(segments, total_pages)
+                if final_exists or segments:
+                    progress = total_pages if final_exists else self.calculate_consecutive_progress_from_segments(segments, total_pages)
                     if progress >= total_pages:
+                        self.queue_pending_pdf_finalization(
+                            normalized, title=title, subtitle=subtitle,
+                            total_pages=total_pages,
+                            reason="PDF final lipsa sau coada PDF dupa marcare completa"
+                        )
                         issues_to_finalize.append({
                             "url": normalized,
                             "title": title,
                             "subtitle": subtitle,
                             "total_pages": total_pages,
                             "already_marked": True,
-                            "reason": "PDF final lipsa dupa marcare completa"
+                            "reason": "PDF final lipsa/coada PDF dupa marcare completa"
                         })
                         seen_urls.add(normalized)
-                        print(f"GASIT: {normalized} - PDF final lipsa, segmente complete pe disk")
+                        print(f"GASIT: {normalized} - PDF final lipsa/coada PDF, issue deja marcat complet")
+        for queued_url, queued in queued_by_url.items():
+            if queued_url in seen_urls:
+                continue
+
+            total_pages = queued.get("total_pages", 0) or 0
+            if total_pages <= 0:
+                print(f"WARNING: Coada PDF are URL fara total_pages valid, il ignor momentan: {queued_url}")
+                continue
+
+            issues_to_finalize.append({
+                "url": queued_url,
+                "title": queued.get("title", ""),
+                "subtitle": queued.get("subtitle", ""),
+                "total_pages": total_pages,
+                "already_marked": False,
+                "reason": "in coada PDF, fara intrare gasita in downloaded_issues"
+            })
+            seen_urls.add(queued_url)
+            print(f"GASIT: {queued_url} - in coada PDF, fara intrare state completa")
 
         if not issues_to_finalize:
             print("OK: Nu am gasit merge-uri uitate.")
@@ -6360,6 +6558,7 @@ class ChromePDFDownloader:
                     else:
                         self.dynamic_skip_urls.add(url)
                         self._save_skip_urls()
+                    self.clear_pending_pdf_finalization(url)
                     continue
 
                 segments = self.get_all_pdf_segments_for_issue_anywhere(url, title)
@@ -6373,6 +6572,7 @@ class ChromePDFDownloader:
                             state_issue["last_successful_segment_end"] = progress
                             self._save_state_safe()
                             break
+                    self.clear_pending_pdf_finalization(url)
                     continue
 
                 pdf_ok = self.copy_and_combine_issue_pdfs(url, title)
@@ -6389,6 +6589,7 @@ class ChromePDFDownloader:
                     self.dynamic_skip_urls.add(url)
                     self._save_skip_urls()
 
+                self.clear_pending_pdf_finalization(url)
                 print(f"OK: FINALIZAT MERGE RESTANT: {url}")
 
             except Exception as e:
@@ -6543,7 +6744,7 @@ class ChromePDFDownloader:
             title, subtitle = self.get_issue_metadata()
 
             # FIXED: Scanează corect fișierele existente pentru acest issue specific
-            existing_pages_max = self.get_existing_pdf_segments(url)
+            existing_pages_max = self.get_existing_pdf_segments(url, title)
             print(f"📊 Ultima pagina găsită pe disk: {existing_pages_max}")
 
             resume_from = 1
@@ -6556,14 +6757,17 @@ class ChromePDFDownloader:
                     break
 
             existing_pages = existing_pages_max
+            actual_progress = max(json_progress, existing_pages)
             if total_pages_json:
-                existing_pages = self.get_existing_pdf_consecutive_progress(url, total_pages_json)
+                existing_pages = self.get_existing_pdf_consecutive_progress(url, total_pages_json, title)
+                actual_progress = max(json_progress, existing_pages)
                 if existing_pages < existing_pages_max:
                     print(f"⚠️ Există găuri pe disk: max={existing_pages_max}, consecutiv={existing_pages}. Reiau de la prima gaură.")
 
             # === VERIFICARE CRITICĂ: DISK vs JSON ===
             # Dacă disk-ul arată 0 sau foarte puțin, dar JSON zice complet → JSON e greșit!
             if existing_pages == 0 and json_progress > 0:
+                actual_progress = 0
                 print(f"⚠️ DISCREPANȚĂ CRITICĂ: JSON zice {json_progress} pagini, dar disk-ul arată {existing_pages}!")
                 print(f"🔄 Ignor JSON-ul greșit - încep descărcarea de la 0!")
                 resume_from = 1
@@ -6658,9 +6862,9 @@ class ChromePDFDownloader:
 
                         # 🔥 CRITICAL FIX: Actualizează pages_done cu progresul REAL de pe disk după recuperare!
                         print(f"🔄 ACTUALIZARE: Scanez disk-ul pentru progres REAL după recuperare...")
-                        final_segments_after_recovery = self.get_all_pdf_segments_for_issue(normalized_url)
+                        final_segments_after_recovery = self.get_all_pdf_segments_for_issue_anywhere(normalized_url, title)
                         if final_segments_after_recovery:
-                            real_progress_after_recovery = max(seg['end'] for seg in final_segments_after_recovery)
+                            real_progress_after_recovery = self.calculate_consecutive_progress_from_segments(final_segments_after_recovery, total_pages)
                             print(f"📊 Progres REAL după recuperare: {real_progress_after_recovery}/{total_pages}")
 
                             # 🔥 ACTUALIZEAZĂ pages_done cu valoarea REALĂ!
@@ -6737,7 +6941,7 @@ class ChromePDFDownloader:
             print("⏳ SINCRONIZARE: Aștept 30 secunde ca toate fișierele să fie complet salvate pe disk...")
             time.sleep(30)
 
-            final_segments_check = self.get_all_pdf_segments_for_issue(url)
+            final_segments_check = self.get_all_pdf_segments_for_issue_anywhere(url, title)
 
             if not final_segments_check:
                 print(f"❌ PROBLEMĂ GRAVĂ: Nu am găsit NICIUN segment pe disk!")
@@ -6745,7 +6949,7 @@ class ChromePDFDownloader:
                 return False
 
             # Calculează progresul REAL de pe disk
-            real_final_page = max(seg['end'] for seg in final_segments_check)
+            real_final_page = self.calculate_consecutive_progress_from_segments(final_segments_check, total_pages)
 
             print(f"📊 PROGRES REAL DE PE DISK: {real_final_page}/{total_pages}")
             print(f"📄 Segmente găsite: {len(final_segments_check)}")
@@ -6817,6 +7021,11 @@ class ChromePDFDownloader:
             print(f"🎯 MARCHEZ CA TERMINAT COMPLET în JSON")
 
             # MARCHEAZĂ ISSUE CA TERMINAT
+            self.queue_pending_pdf_finalization(
+                url, title=title, subtitle=subtitle,
+                total_pages=total_pages,
+                reason="toate segmentele confirmate, inainte de merge PDF"
+            )
             pdf_ok_before_json = self.copy_and_combine_issue_pdfs(url, title or normalized_url)
             if not pdf_ok_before_json:
                 print("ERROR: PDF-ul final nu a fost creat. Pastrez issue-ul ca partial si NU il marchez complet.")
@@ -6826,6 +7035,7 @@ class ChromePDFDownloader:
                 return False
 
             self.mark_issue_done(url, pages_done, title=title, subtitle=subtitle, total_pages=total_pages)
+            self.clear_pending_pdf_finalization(url)
             print(f"✅ Issue marcat ca terminat în JSON: {url} ({pages_done} pagini)")
 
             # PAUZĂ: Așteaptă ca JSON să fie salvat
@@ -6836,7 +7046,7 @@ class ChromePDFDownloader:
             print(f"\n🔄 ÎNCEPE PROCESAREA PDF-URILOR pentru {url}...")
 
             # Verifică din nou că toate fișierele sunt pe disk
-            final_segments = self.get_all_pdf_segments_for_issue(url)
+            final_segments = self.get_all_pdf_segments_for_issue_anywhere(url, title)
             print(f"🔍 VERIFICARE: Am găsit {len(final_segments)} fișiere PDF pentru acest issue")
 
             if len(final_segments) == 0 and not self.issue_final_pdf_exists(url, title or normalized_url):
@@ -7041,7 +7251,7 @@ class ChromePDFDownloader:
         print(f"\n🔍 VERIFICARE PRIORITARĂ: Caut issue-uri complet descărcate dar nefinalizate din această colecție...")
 
         # Apelează procesarea issue-urilor nefinalizate pentru această colecție
-        if not self.process_completed_but_unfinalized_issues():
+        if not self.process_completed_but_unfinalized_issues(candidate_urls=issue_links):
             print("ERROR: Exista un merge restant nerezolvat. Nu continui cu issue-uri/colectii noi.")
             return False
 
@@ -7400,6 +7610,13 @@ class ChromePDFDownloader:
             return False
         finally:
             if self.state.get("daily_limit_hit", False):
+                try:
+                    print("Limita zilnica atinsa; verific mai intai merge-uri locale restante inainte de inchidere Firefox.")
+                    self.process_completed_but_unfinalized_issues()
+                    self.state["daily_limit_hit"] = True
+                    self._save_state_safe()
+                except Exception as e:
+                    print(f"WARNING: Nu am putut procesa merge-uri restante inainte de inchidere: {e}")
                 self.close_firefox_for_daily_limit()
             # NU închide Firefox - lasă-l deschis pentru utilizator
             elif not self.attached_existing and self.driver:
@@ -7565,8 +7782,9 @@ def main():
         print(f"\n✅ StudiiSiCercetariMecanicaSiAplicata este COMPLET!")
         print(f"   🎯 Va trece la următoarea colecție din ADDITIONAL_COLLECTIONS")
 
-    # PASUL 6: Resetează starea pentru a continua corect cu StudiiSiCercetariMecanicaSiAplicata
-    if total_remaining > 0:
+    # PASUL 6: Nu mai fortam resetarea pentru Studii in rularea normala.
+    # Partialele active si current_additional_collection_index dicteaza prioritatea.
+    if False and total_remaining > 0:
         print(f"\n🔧 RESETEZ STAREA pentru a continua cu StudiiSiCercetariMecanicaSiAplicata:")
 
         # Resetează flag-urile greșite
@@ -7581,12 +7799,29 @@ def main():
         temp_downloader._save_state()
         print(f"   ✅ Starea resetată pentru a continua cu StudiiSiCercetariMecanicaSiAplicata")
 
+    # Daca exista un issue partial, pozitioneaza indexul pe colectia lui.
+    # Exemplu: BuletInstPolitehIasi_6_1972 -> colectia BuletInstPolitehIasi_6.
+    if pending_partials:
+        first_partial_url = pending_partials[0].get("url", "")
+        issue_id = first_partial_url.split("?")[0].rstrip("/").split("/")[-1]
+        for idx, collection_url in enumerate(ADDITIONAL_COLLECTIONS):
+            collection_id = collection_url.rstrip("/").split("/")[-1]
+            if issue_id == collection_id or issue_id.startswith(collection_id + "_"):
+                if temp_downloader.state.get("current_additional_collection_index", 0) != idx:
+                    print(f"   Repozitionez current_additional_collection_index pe colectia partiala: {idx} ({collection_id})")
+                    temp_downloader.state["current_additional_collection_index"] = idx
+                    temp_downloader.state["main_collection_completed"] = False
+                    temp_downloader._save_state()
+                    current_index = idx
+                break
+
     # PASUL 7: Setează URL-ul colecției principale (sare peste StudiiSiCercetariMecanicaSiAplicata)
     print(f"\n🎯 SELECTARE COLECȚIE PRINCIPALĂ:")
 
     # Găsește prima colecție din ADDITIONAL_COLLECTIONS care NU e în skip list
     main_collection_url = None
-    for collection_url in ADDITIONAL_COLLECTIONS:
+    start_collection_index = temp_downloader.state.get("current_additional_collection_index", 0) or 0
+    for collection_url in ADDITIONAL_COLLECTIONS[start_collection_index:]:
         normalized = collection_url.rstrip('/')
         if normalized not in temp_downloader.dynamic_skip_urls:
             main_collection_url = collection_url
