@@ -4604,12 +4604,12 @@ class ChromePDFDownloader:
 
                     if not current_username:
                         username_field.clear()
-                        username_field.send_keys("oanaaaa08@gmail.com")
+                        username_field.send_keys("YOUR@MAIL.com")
                         print("✅ Username completat")
 
                     if not current_password:
                         password_field.clear()
-                        password_field.send_keys("h;Uo3n*D;)kT9")
+                        password_field.send_keys("YOUR-PASSWORD")
                         print("✅ Parolă completată")
 
                 # PASUL 5: Așteaptă puțin și apoi submit
