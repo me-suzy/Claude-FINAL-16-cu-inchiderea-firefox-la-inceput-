@@ -65,7 +65,7 @@ def setup_logging():
         if isinstance(handler, logging.FileHandler):
             handler.stream.reconfigure(line_buffering=True)
 
-    print(f"📝 LOGGING ACTIVAT: {log_file}")
+    print(f" LOGGING ACTIVAT: {log_file}")
     return log_file
 
 
@@ -104,7 +104,7 @@ foreach ($p in $items) {
                       timeout=timeout_sec)
         return True
     except Exception as e:
-        print(f"   ⚠️ PowerShell Stop-Process {name}: {e}")
+        print(f"    PowerShell Stop-Process {name}: {e}")
         return False
 
 
@@ -115,13 +115,13 @@ def kill_firefox_and_geckodriver_at_start():
     """
     try:
         gecko_count = _ps_get_process_count('geckodriver')
-        print(f"🔄 [LA PORNIRE] Firefox-ul tau ramane DESCHIS; inchid doar geckodriver orfan (gasit: {gecko_count})...")
+        print(f" [LA PORNIRE] Firefox-ul tau ramane DESCHIS; inchid doar geckodriver orfan (gasit: {gecko_count})...")
         if gecko_count > 0:
             _ps_stop_process('geckodriver')
             time.sleep(2)
-        print("✅ [LA PORNIRE] Gata.")
+        print(" [LA PORNIRE] Gata.")
     except Exception as e:
-        print(f"⚠️ [LA PORNIRE] Eroare: {e}")
+        print(f" [LA PORNIRE] Eroare: {e}")
 
 
 # fisierele de login copiate in profilul temporar (ca Firefox-ul de automatizare sa fie LOGAT)
@@ -1021,6 +1021,13 @@ ALLOW_NEW_ISSUES_FROM_DISK = False
 DAILY_LIMIT = 1050
 STATE_FILENAME = "state.json"
 SKIP_URLS_FILENAME = "skip_urls.json"
+SAVE_ATTEMPTS_GUARD_FILENAME = "save_attempts_guard.json"
+SAVE_START_TIMEOUT_SECONDS = 15
+TARGET_SEGMENT_INTERVAL_SECONDS = 40
+PRE_SAVE_CLICK_DELAY_SECONDS = 1
+POST_SAVE_CLICK_DELAY_SECONDS = 1
+POST_DOWNLOAD_URL_CHECK_DELAY_SECONDS = 0.5
+RENAVIGATE_STABILIZE_SECONDS = 2
 
 
 class ChromePDFDownloader:
@@ -1034,6 +1041,7 @@ class ChromePDFDownloader:
         self.attached_existing = False
         self.state_path = os.path.join(self.download_dir, STATE_FILENAME)
         self.skip_urls_path = os.path.join(self.download_dir, SKIP_URLS_FILENAME)
+        self.save_attempts_guard_path = os.path.join(self.download_dir, SAVE_ATTEMPTS_GUARD_FILENAME)
         self.current_issue_url = None
         self.dynamic_skip_urls = set()
 
@@ -1048,6 +1056,12 @@ class ChromePDFDownloader:
         self.account_in_use_long_wait_seconds = 60
         self.last_auto_login_at = 0
         self.auto_login_min_interval = 60
+        self.max_save_without_file_attempts = 3
+        self.save_start_timeout = SAVE_START_TIMEOUT_SECONDS
+        self.save_without_file_attempts = {}
+        self.save_attempt_records = {}
+        self.last_driver_dead_error = ""
+        self._load_save_attempt_guard()
 
         # Calea pentru loguri zilnice
         self.daily_log_dir = os.path.join(self.download_dir, "daily_logs")
@@ -1059,6 +1073,147 @@ class ChromePDFDownloader:
         self._load_skip_urls()
         self._load_state()
         self.fix_existing_json()
+
+    def _is_dead_driver_error(self, error):
+        text = str(error).lower()
+        markers = [
+            "invalidsessionid",
+            "invalid session id",
+            "without establishing a connection",
+            "failed to decode response from marionette",
+            "browsing context has been discarded",
+            "web browsing context has been discarded",
+            "process unexpectedly closed",
+            "no such window",
+            "connection refused",
+            "connection reset",
+        ]
+        return any(marker in text for marker in markers)
+
+    def _save_attempt_key(self, start, end):
+        today = datetime.now().strftime("%Y-%m-%d")
+        issue_url = self.current_issue_url or ""
+        return f"{today}||{issue_url}||{start}-{end}"
+
+    def _load_save_attempt_guard(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        self.save_without_file_attempts = {}
+        self.save_attempt_records = {}
+
+        if not os.path.exists(self.save_attempts_guard_path):
+            return
+
+        try:
+            with open(self.save_attempts_guard_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            if data.get("date") != today:
+                print(f" Reset guard Save fără PDF: fișierul era pentru {data.get('date')}, azi este {today}.")
+                return
+
+            attempts = data.get("attempts", {})
+            if not isinstance(attempts, dict):
+                return
+
+            for key, record in attempts.items():
+                if isinstance(record, dict):
+                    count = int(record.get("count", 0) or 0)
+                    if count > 0:
+                        self.save_without_file_attempts[key] = count
+                        self.save_attempt_records[key] = record
+
+            if self.save_without_file_attempts:
+                print(f" Încărcat guard Save fără PDF: {len(self.save_without_file_attempts)} segmente urmărite azi.")
+        except Exception as e:
+            print(f" Nu am putut încărca {self.save_attempts_guard_path}: {e}")
+
+    def _save_attempt_guard(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        data = {
+            "date": today,
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "max_attempts": self.max_save_without_file_attempts,
+            "attempts": self.save_attempt_records,
+        }
+
+        try:
+            tmp_path = self.save_attempts_guard_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, self.save_attempts_guard_path)
+        except Exception as e:
+            print(f" Nu am putut salva guard-ul Save fără PDF: {e}")
+
+    def _set_download_no_file_stop(self, start, end, reason, count):
+        issue_url = self.current_issue_url or ""
+        print("=" * 70)
+        print(" OPRIRE DE SIGURANTA: cerere Save fara fisier PDF confirmat pe HDD")
+        print(f"   Issue: {issue_url}")
+        print(f"   Segment: {start}-{end}")
+        print(f"   Incercari false azi: {count}/{self.max_save_without_file_attempts}")
+        print(f"   Motiv: {reason}")
+        print("   Nu mai incerc alte Save-uri ca sa nu consum limita Arcanum pe download-uri false.")
+        print("=" * 70)
+        self.state["download_no_file_stop"] = True
+        self.state["download_no_file_issue"] = issue_url
+        self.state["download_no_file_segment"] = f"{start}-{end}"
+        self.state["download_no_file_reason"] = reason
+        self.state["download_no_file_attempts"] = count
+        self.state["download_no_file_at"] = datetime.now().isoformat(timespec="seconds")
+        self._save_state_safe()
+
+    def _save_attempt_guard_reached(self, start, end):
+        key = self._save_attempt_key(start, end)
+        count = self.save_without_file_attempts.get(key, 0)
+        if count < self.max_save_without_file_attempts:
+            return False
+
+        self._set_download_no_file_stop(
+            start,
+            end,
+            "segment blocat de guard: prea multe Save-uri fara PDF pentru aceleasi pagini",
+            count,
+        )
+        return True
+
+    def _record_save_without_file(self, start, end, reason, force_stop=False):
+        issue_url = self.current_issue_url or ""
+        key = self._save_attempt_key(start, end)
+        count = self.save_without_file_attempts.get(key, 0) + 1
+        self.save_without_file_attempts[key] = count
+
+        self.save_attempt_records[key] = {
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "issue_url": issue_url,
+            "segment": f"{start}-{end}",
+            "start": start,
+            "end": end,
+            "count": count,
+            "last_reason": reason,
+            "last_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        self._save_attempt_guard()
+
+        print(f" Save fara PDF confirmat pe HDD pentru segmentul {start}-{end}: {count}/{self.max_save_without_file_attempts}")
+        print(f"   Motiv: {reason}")
+
+        if force_stop or count >= self.max_save_without_file_attempts:
+            self._set_download_no_file_stop(start, end, reason, count)
+            return True
+
+        return False
+
+    def _clear_save_without_file_counter(self, start, end):
+        key = self._save_attempt_key(start, end)
+        changed = False
+        if key in self.save_without_file_attempts:
+            self.save_without_file_attempts.pop(key, None)
+            changed = True
+        if key in self.save_attempt_records:
+            self.save_attempt_records.pop(key, None)
+            changed = True
+        if changed:
+            self._save_attempt_guard()
 
     def _load_skip_urls(self):
         """Încarcă skip URLs din fișierul separat"""
@@ -1077,15 +1232,15 @@ class ChromePDFDownloader:
                     self.dynamic_skip_urls.update(url.rstrip('/') for url in completed_urls)
                     self.dynamic_skip_urls.update(url.rstrip('/') for url in completed_collections)
 
-                    print(f"📋 Încărcat {len(completed_urls)} URL-uri complet descărcate din {SKIP_URLS_FILENAME}")
-                    print(f"📋 Încărcat {len(completed_collections)} colecții complet procesate din {SKIP_URLS_FILENAME}")
+                    print(f" Încărcat {len(completed_urls)} URL-uri complet descărcate din {SKIP_URLS_FILENAME}")
+                    print(f" Încărcat {len(completed_collections)} colecții complet procesate din {SKIP_URLS_FILENAME}")
             except Exception as e:
-                print(f"⚠ Eroare la citirea {SKIP_URLS_FILENAME}: {e}")
-                print(f"🔄 Recreez {SKIP_URLS_FILENAME} de la zero...")
+                print(f" Eroare la citirea {SKIP_URLS_FILENAME}: {e}")
+                print(f" Recreez {SKIP_URLS_FILENAME} de la zero...")
                 # Dacă JSON-ul e prea corupt, resetează-l
                 self._save_skip_urls()
 
-        print(f"🚫 Total URL-uri de skip: {len(self.dynamic_skip_urls)}")
+        print(f" Total URL-uri de skip: {len(self.dynamic_skip_urls)}")
 
     def _save_skip_urls(self):
         """FIXED: Verifică corect dacă un issue este complet - FOLOSEȘTE last_successful_segment_end!"""
@@ -1097,6 +1252,12 @@ class ChromePDFDownloader:
                 total_pages = item.get("total_pages")
                 last_segment = item.get("last_successful_segment_end", 0)
                 pages = item.get("pages", 0)  # Pentru debug
+                url = item.get("url", "")
+
+                if url and self._state_year_mismatch_for_issue(item):
+                    print(f"WARNING: Nu adaug in skip URL suspect: {url}")
+                    print("   Titlul/subtitlul nu corespunde cu anul din URL.")
+                    continue
 
                 # CONDIȚIE FIXATĂ: verifică progresul REAL (last_segment), nu pages!
                 if (completed_at and  # Marcat ca terminat
@@ -1105,15 +1266,15 @@ class ChromePDFDownloader:
                     last_segment >= total_pages):  # Progresul REAL este complet
 
                     completed_urls.append(item["url"])
-                    print(f"✅ Issue complet pentru skip: {item['url']} ({last_segment}/{total_pages})")
+                    print(f" Issue complet pentru skip: {item['url']} ({last_segment}/{total_pages})")
 
                     # DEBUG: Afișează discrepanțele
                     if pages != last_segment:
-                        print(f"   ⚠ DISCREPANȚĂ: pages={pages}, last_segment={last_segment}")
+                        print(f"    DISCREPANȚĂ: pages={pages}, last_segment={last_segment}")
                 else:
                     # DEBUG: Afișează de ce nu e considerat complet
                     if item.get("url"):  # Doar dacă are URL valid
-                        print(f"🔄 Issue incomplet: {item.get('url', 'NO_URL')}")
+                        print(f" Issue incomplet: {item.get('url', 'NO_URL')}")
                         print(f"   completed_at: {bool(completed_at)}")
                         print(f"   total_pages: {total_pages}")
                         print(f"   last_segment: {last_segment}")
@@ -1121,11 +1282,11 @@ class ChromePDFDownloader:
 
                         # Verifică fiecare condiție individual
                         if not completed_at:
-                            print(f"   → Lipsește completed_at")
+                            print(f"   -> Lipsește completed_at")
                         elif not total_pages or total_pages <= 0:
-                            print(f"   → total_pages invalid")
+                            print(f"   -> total_pages invalid")
                         elif last_segment < total_pages:
-                            print(f"   → Progres incomplet: {last_segment}/{total_pages}")
+                            print(f"   -> Progres incomplet: {last_segment}/{total_pages}")
 
             # Adaugă și cele statice
             all_completed = list(STATIC_SKIP_URLS) + completed_urls
@@ -1145,16 +1306,84 @@ class ChromePDFDownloader:
             with open(self.skip_urls_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
 
-            print(f"💾 Salvat {len(data['completed_urls'])} URL-uri CORECT VERIFICATE în {SKIP_URLS_FILENAME}")
+            print(f" Salvat {len(data['completed_urls'])} URL-uri CORECT VERIFICATE în {SKIP_URLS_FILENAME}")
 
             # RAPORT FINAL pentru debugging
-            print(f"📋 ISSUES COMPLETE în skip_urls:")
+            print(f" ISSUES COMPLETE în skip_urls:")
             for url in sorted(completed_urls):
                 year = url.split('_')[-1] if '_' in url else 'UNKNOWN'
-                print(f"   ✅ {year}")
+                print(f"    {year}")
 
         except Exception as e:
-            print(f"⚠ Eroare la salvarea {SKIP_URLS_FILENAME}: {e}")
+            print(f" Eroare la salvarea {SKIP_URLS_FILENAME}: {e}")
+
+    def _issue_year_from_url(self, issue_url):
+        issue_id = self._issue_id_from_url(issue_url)
+        match = re.search(r'_(18\d{2}|19\d{2}|20\d{2})(?:\D|$)', issue_id)
+        if not match:
+            match = re.search(r'(?<!\d)(18\d{2}|19\d{2}|20\d{2})(?!\d)', issue_id)
+        return match.group(1) if match else None
+
+    def _state_year_mismatch_for_issue(self, item):
+        url = item.get("url", "")
+        expected_year = self._issue_year_from_url(url)
+        if not expected_year:
+            return False
+
+        text = f"{item.get('title', '')} {item.get('subtitle', '')}"
+        visible_years = set(re.findall(r'\b(18\d{2}|19\d{2}|20\d{2})\b', text))
+        if not visible_years:
+            return False
+
+        return expected_year not in visible_years
+
+    def _remove_stale_dynamic_skip_url(self, issue_url, reason=""):
+        normalized = self._normalize_issue_url(issue_url)
+        if not normalized:
+            return
+
+        self.dynamic_skip_urls.discard(normalized)
+
+        try:
+            if not os.path.exists(self.skip_urls_path):
+                return
+
+            with open(self.skip_urls_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            old_completed = data.get("completed_urls", [])
+            new_completed = [
+                url for url in old_completed
+                if self._normalize_issue_url(url) != normalized
+            ]
+
+            if len(new_completed) == len(old_completed):
+                return
+
+            data["completed_urls"] = new_completed
+            data["last_updated"] = datetime.now().isoformat()
+
+            with open(self.skip_urls_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+
+            suffix = f" ({reason})" if reason else ""
+            print(f"WARNING: Am scos skip vechi/neconfirmat: {normalized}{suffix}")
+        except Exception as e:
+            print(f"WARNING: Nu am putut curata skip_urls pentru {normalized}: {e}")
+
+    def _skip_url_is_verified_complete(self, issue_url):
+        normalized = self._normalize_issue_url(issue_url)
+        item = self.find_issue_state_item(normalized)
+
+        if not item:
+            self._remove_stale_dynamic_skip_url(normalized, "lipseste state complet")
+            return False
+
+        if self.is_issue_really_complete(item):
+            return True
+
+        self._remove_stale_dynamic_skip_url(normalized, "state incomplet/suspect")
+        return False
 
     def _safe_folder_name(self, name: str) -> str:
         return re.sub(r'[<>:"/\\|?*]', '_', name).strip()
@@ -1178,7 +1407,7 @@ class ChromePDFDownloader:
         """FIXED: Determină dacă un issue e complet pe baza ultimei pagini"""
         # VERIFICARE CRITICĂ: Dacă e doar 1 pagină, probabil e o eroare de detectare
         if end_page <= 1:
-            print(f"⚠ ALERTĂ: end_page={end_page} pare să fie o eroare de detectare!")
+            print(f" ALERTĂ: end_page={end_page} pare să fie o eroare de detectare!")
             return False  # NU considera complet dacă e doar 1 pagină
 
         # Pentru issue-uri normale, verifică dacă ultima pagină nu e multiplu rotund
@@ -1238,7 +1467,7 @@ class ChromePDFDownloader:
                     if match:
                         path = os.path.join(self.download_dir, filename)
                         if not self.is_valid_pdf_file(path):
-                            print(f"⚠ PDF invalid/nesalvat complet ignorat: {filename}")
+                            print(f" PDF invalid/nesalvat complet ignorat: {filename}")
                             continue
                         start_page = int(match.group(1))
                         end_page = int(match.group(2))
@@ -1250,11 +1479,111 @@ class ChromePDFDownloader:
                         })
 
         except Exception as e:
-            print(f"⚠ Eroare la scanarea fișierelor pentru {issue_url}: {e}")
+            print(f" Eroare la scanarea fișierelor pentru {issue_url}: {e}")
 
         # Sortează după pagina de început
         segments.sort(key=lambda x: x['start'])
         return segments
+
+    def get_segment_file_candidates(self, issue_url, start, end):
+        """Returneaza orice fisier aparut pe disk pentru segment, inclusiv .part/incomplet."""
+        issue_id = issue_url.rstrip('/').split('/')[-1]
+        marker = f"__pages{start}-{end}"
+        candidates = []
+
+        try:
+            for filename in os.listdir(self.download_dir):
+                if marker not in filename:
+                    continue
+
+                file_issue_id = self.extract_issue_id_from_filename(filename)
+                if file_issue_id != issue_id and not filename.startswith(issue_id):
+                    continue
+
+                path = os.path.join(self.download_dir, filename)
+                if not os.path.isfile(path):
+                    continue
+
+                try:
+                    size = os.path.getsize(path)
+                except Exception:
+                    size = 0
+
+                is_complete_pdf = filename.lower().endswith(".pdf") and self.is_valid_pdf_file(path)
+                candidates.append({
+                    "filename": filename,
+                    "start": start,
+                    "end": end,
+                    "path": path,
+                    "size": size,
+                    "is_complete_pdf": is_complete_pdf,
+                })
+        except Exception as e:
+            print(f" Eroare la cautarea fisierului pentru segmentul {start}-{end}: {e}")
+
+        candidates.sort(key=lambda x: (not x["is_complete_pdf"], x["filename"]))
+        return candidates
+
+    def wait_for_segment_start_on_disk(self, start, end, timeout=None):
+        """Asteapta scurt sa apara orice urma de download pe HDD pentru segmentul cerut."""
+        timeout = timeout or self.save_start_timeout
+        deadline = time.time() + timeout
+        last_seen_size = None
+        stable_since = None
+        last_candidate = None
+
+        while time.time() < deadline:
+            try:
+                if self.detect_account_in_use():
+                    print(f" Segmentul {start}-{end}: blocat de mesajul 'Contul este utilizat'.")
+                    return "account_in_use", None
+            except Exception as e:
+                if self._is_dead_driver_error(e):
+                    print(f" Segmentul {start}-{end}: WebDriver mort in timpul detectarii account-in-use: {e}")
+                    return "driver_dead", None
+                raise
+
+            if self.check_for_daily_limit_popup():
+                print(f" Segmentul {start}-{end}: limita zilnica detectata in primele {timeout}s dupa Save.")
+                return "daily_limit", None
+            if self.last_driver_dead_error:
+                print(f" Segmentul {start}-{end}: WebDriver mort in primele {timeout}s dupa Save: {self.last_driver_dead_error}")
+                return "driver_dead", None
+
+            try:
+                if self.detect_login_required():
+                    print(f" Segmentul {start}-{end}: pagina a ajuns la login dupa Save; nu exista fisier pornit pe HDD.")
+                    return "login_required", None
+            except Exception as e:
+                if self._is_dead_driver_error(e):
+                    print(f" Segmentul {start}-{end}: WebDriver mort in timpul detectarii loginului: {e}")
+                    return "driver_dead", None
+                raise
+
+            candidates = self.get_segment_file_candidates(self.current_issue_url, start, end)
+            for candidate in candidates:
+                last_candidate = candidate
+                if not candidate["is_complete_pdf"]:
+                    print(f" Download pornit pe HDD: {candidate['filename']} ({candidate['size']} bytes, inca nefinalizat)")
+                    return "started", candidate
+
+                size_now = candidate["size"]
+                if last_seen_size == size_now:
+                    if stable_since and time.time() - stable_since >= 2:
+                        print(f" Confirmat rapid pe disk: {candidate['filename']} ({size_now} bytes)")
+                        return "ok", candidate
+                else:
+                    last_seen_size = size_now
+                    stable_since = time.time()
+
+            time.sleep(1)
+
+        if last_candidate:
+            print(f" Exista fisier pornit pentru segmentul {start}-{end}, dar nu e inca stabil/final.")
+            return "started", last_candidate
+
+        print(f" Segmentul {start}-{end}: nu a aparut niciun fisier pe HDD in {timeout}s dupa Save.")
+        return "missing", None
 
     def wait_for_segment_on_disk(self, start, end, timeout=150):
         """Confirma ca segmentul cerut exista fizic pe disk si este PDF valid."""
@@ -1263,13 +1592,32 @@ class ChromePDFDownloader:
         stable_since = None
 
         while time.time() < deadline:
-            if self.detect_account_in_use():
-                print(f"🚫 Segmentul {start}-{end}: blocat de mesajul 'Contul este utilizat'.")
-                return "account_in_use", None
+            try:
+                if self.detect_account_in_use():
+                    print(f" Segmentul {start}-{end}: blocat de mesajul 'Contul este utilizat'.")
+                    return "account_in_use", None
+            except Exception as e:
+                if self._is_dead_driver_error(e):
+                    print(f" Segmentul {start}-{end}: WebDriver mort in timpul detectarii account-in-use: {e}")
+                    return "driver_dead", None
+                raise
 
             if self.check_for_daily_limit_popup():
-                print(f"🛑 Segmentul {start}-{end}: limita zilnica detectata in timpul asteptarii fisierului.")
+                print(f" Segmentul {start}-{end}: limita zilnica detectata in timpul asteptarii fisierului.")
                 return "daily_limit", None
+            if self.last_driver_dead_error:
+                print(f" Segmentul {start}-{end}: WebDriver mort in timpul verificarii limitei: {self.last_driver_dead_error}")
+                return "driver_dead", None
+
+            try:
+                if self.detect_login_required():
+                    print(f" Segmentul {start}-{end}: pagina a ajuns la login dupa Save; nu exista PDF confirmat.")
+                    return "login_required", None
+            except Exception as e:
+                if self._is_dead_driver_error(e):
+                    print(f" Segmentul {start}-{end}: WebDriver mort in timpul detectarii loginului: {e}")
+                    return "driver_dead", None
+                raise
 
             for seg in self.get_all_pdf_segments_for_issue(self.current_issue_url):
                 if seg['start'] <= start and seg['end'] >= end:
@@ -1280,7 +1628,7 @@ class ChromePDFDownloader:
 
                     if last_seen_size == size_now:
                         if stable_since and time.time() - stable_since >= 2:
-                            print(f"✅ Confirmat pe disk: {seg['filename']} ({size_now} bytes)")
+                            print(f" Confirmat pe disk: {seg['filename']} ({size_now} bytes)")
                             return "ok", seg
                     else:
                         last_seen_size = size_now
@@ -1288,7 +1636,7 @@ class ChromePDFDownloader:
 
             time.sleep(2)
 
-        print(f"❌ Segmentul {start}-{end}: nu a aparut niciun PDF valid pe disk in {timeout}s.")
+        print(f" Segmentul {start}-{end}: nu a aparut niciun PDF valid pe disk in {timeout}s.")
         return "missing", None
 
     def get_existing_pdf_segments(self, issue_url, issue_title=None):
@@ -1304,9 +1652,9 @@ class ChromePDFDownloader:
         # Găsește cea mai mare pagină finală
         max_page = max(seg['end'] for seg in segments)
 
-        print(f"📊 Fișiere PDF existente pentru {issue_url}:")
+        print(f" Fișiere PDF existente pentru {issue_url}:")
         for seg in segments:
-            print(f"   📄 {seg['filename']} (pagini {seg['start']}-{seg['end']})")
+            print(f"    {seg['filename']} (pagini {seg['start']}-{seg['end']})")
 
         return max_page
 
@@ -1330,6 +1678,23 @@ class ChromePDFDownloader:
 
         return real_progress
 
+    def infer_total_pages_from_segments(self, segments):
+        """Deduce totalul real cand ultimul segment este mai scurt decat batch-ul normal."""
+        if not segments:
+            return 0
+
+        last_segment = max(segments, key=lambda seg: (seg.get("end", 0), seg.get("start", 0)))
+        start = int(last_segment.get("start", 0) or 0)
+        end = int(last_segment.get("end", 0) or 0)
+        if start <= 0 or end <= 0:
+            return 0
+
+        expected_full_end = self.batch_size - 1 if start == 1 else start + self.batch_size - 1
+        if end < expected_full_end:
+            return end
+
+        return 0
+
     def get_existing_pdf_consecutive_progress(self, issue_url, total_pages, issue_title=None):
         """Scaneaza disk-ul si returneaza progresul real consecutiv, nu doar ultimul fisier."""
         if hasattr(self, "get_all_pdf_segments_for_issue_anywhere"):
@@ -1339,7 +1704,7 @@ class ChromePDFDownloader:
         progress = self.calculate_consecutive_progress_from_segments(segments, total_pages)
         if segments:
             max_page = max(seg['end'] for seg in segments)
-            print(f"📊 Progres consecutiv pe disk pentru {issue_url}: {progress}/{total_pages} (max segment: {max_page})")
+            print(f" Progres consecutiv pe disk pentru {issue_url}: {progress}/{total_pages} (max segment: {max_page})")
         return progress
 
     def calculate_expected_segments(self, total_pages):
@@ -1406,30 +1771,30 @@ class ChromePDFDownloader:
         is_complete, missing_segments, existing_segments = self.verify_physical_segments(issue_url, total_pages)
 
         if is_complete:
-            print(f"✅ VERIFICARE FIZICĂ: Toate {len(existing_segments)} segmente există pe disk")
+            print(f" VERIFICARE FIZICĂ: Toate {len(existing_segments)} segmente există pe disk")
             return True
         else:
-            print(f"❌ VERIFICARE FIZICĂ: LIPSESC {len(missing_segments)} SEGMENTE!")
-            print(f"   📊 Existente: {len(existing_segments)} segmente")
-            print(f"   📊 Așteptate: {len(missing_segments) + len(existing_segments)} segmente")
-            print(f"   🔍 Segmente LIPSĂ:")
+            print(f" VERIFICARE FIZICĂ: LIPSESC {len(missing_segments)} SEGMENTE!")
+            print(f"    Existente: {len(existing_segments)} segmente")
+            print(f"    Așteptate: {len(missing_segments) + len(existing_segments)} segmente")
+            print(f"    Segmente LIPSĂ:")
             for start, end in missing_segments:
-                print(f"      ❌ pages{start}-{end}.pdf")
+                print(f"       pages{start}-{end}.pdf")
 
             # Dacă avem item din state.json, marchează-l ca incomplet
             if item:
                 if item.get("completed_at"):
-                    print(f"   🔧 CORECTEZ: Șterg completed_at pentru a relua descărcarea")
+                    print(f"    CORECTEZ: Șterg completed_at pentru a relua descărcarea")
                     item["completed_at"] = ""
                 if item.get("pages") == total_pages:
-                    print(f"   🔧 CORECTEZ: Resetez pages la 0 pentru reluare")
+                    print(f"    CORECTEZ: Resetez pages la 0 pentru reluare")
                     item["pages"] = 0
 
             return False
 
     def reconstruct_all_issues_from_disk(self):
         """FIXED: Reconstruiește complet progresul din fișierele de pe disk"""
-        print("🔍 SCANEZ COMPLET toate fișierele PDF de pe disk...")
+        print(" SCANEZ COMPLET toate fișierele PDF de pe disk...")
 
         # Grupează fișierele după issue ID
         issues_on_disk = {}
@@ -1483,31 +1848,31 @@ class ChromePDFDownloader:
                     issues_on_disk[issue_id]['max_page'] = end_page
 
         except Exception as e:
-            print(f"⚠ Eroare la scanarea disk-ului: {e}")
+            print(f" Eroare la scanarea disk-ului: {e}")
             return {}
 
         # Afișează rezultatele scanării
-        print(f"📊 Găsite {len(issues_on_disk)} issue-uri pe disk:")
+        print(f" Găsite {len(issues_on_disk)} issue-uri pe disk:")
         for issue_id, data in issues_on_disk.items():
             segments_count = len(data['segments'])
             max_page = data['max_page']
             url = data['url']
 
-            print(f"   📁 {issue_id}: {segments_count} segmente, max pagina {max_page}")
-            print(f"      🔗 URL: {url}")
+            print(f"    {issue_id}: {segments_count} segmente, max pagina {max_page}")
+            print(f"       URL: {url}")
 
             # Afișează segmentele sortate
             data['segments'].sort(key=lambda x: x['start'])
             for seg in data['segments'][:3]:  # Primele 3
-                print(f"      📄 {seg['filename']} ({seg['start']}-{seg['end']})")
+                print(f"       {seg['filename']} ({seg['start']}-{seg['end']})")
             if segments_count > 3:
-                print(f"      📄 ... și încă {segments_count - 3} segmente")
+                print(f"       ... și încă {segments_count - 3} segmente")
 
         return issues_on_disk
 
     def sync_json_with_disk_files(self):
         """SAFE: Îmbogățește informațiile din JSON cu cele de pe disk, ZERO pierderi + SORTARE CRONOLOGICĂ CORECTĂ"""
-        print("🔄 MERGE SAFE - combinez informațiile din JSON cu cele de pe disk...")
+        print(" MERGE SAFE - combinez informațiile din JSON cu cele de pe disk...")
 
         # PASUL 1: Scanează complet disk-ul
         issues_on_disk = self.reconstruct_all_issues_from_disk()
@@ -1518,7 +1883,7 @@ class ChromePDFDownloader:
             url = item.get("url", "").rstrip('/')
             existing_issues_by_url[url] = item.copy()  # DEEP COPY pentru siguranță
 
-        print(f"📋 PĂSTREZ {len(existing_issues_by_url)} issue-uri din JSON existent")
+        print(f" PĂSTREZ {len(existing_issues_by_url)} issue-uri din JSON existent")
 
         # PASUL 3: MERGE cu datele de pe disk (doar îmbogățește, nu șterge)
         enriched_count = 0
@@ -1548,7 +1913,7 @@ class ChromePDFDownloader:
                     if not existing_issue.get("total_pages"):
                         existing_issue["total_pages"] = total_pages_hint
                     enriched_count += 1
-                    print(f"🔄 ÎMBOGĂȚIT: {url} - progres consecutiv {current_progress} → {disk_progress}")
+                    print(f" ÎMBOGĂȚIT: {url} - progres consecutiv {current_progress} -> {disk_progress}")
 
                 # Nu marca aici issue-ul ca finalizat. Daca toate segmentele sunt pe
                 # disk, ramane "descarcat complet dar nefinalizat", iar
@@ -1557,7 +1922,7 @@ class ChromePDFDownloader:
                     if not existing_issue.get("total_pages"):
                         existing_issue["total_pages"] = total_pages_hint
                     existing_issue["pages"] = 0
-                    print(f"✅ Segmente complete pe disk, dar ramane NEFINALIZAT pentru procesare PDF: {url} ({disk_progress} pagini)")
+                    print(f" Segmente complete pe disk, dar ramane NEFINALIZAT pentru procesare PDF: {url} ({disk_progress} pagini)")
 
             else:
                 if not ALLOW_NEW_ISSUES_FROM_DISK:
@@ -1577,7 +1942,7 @@ class ChromePDFDownloader:
                 }
                 existing_issues_by_url[url] = new_issue
                 new_from_disk_count += 1
-                print(f"➕ ADĂUGAT nou din disk: {url} ({max_page} pagini, {segments_count} segmente)")
+                print(f" ADĂUGAT nou din disk: {url} ({max_page} pagini, {segments_count} segmente)")
 
         # PASUL 4: Reconstruiește lista finală (TOATE issue-urile păstrate)
         all_issues_list = list(existing_issues_by_url.values())
@@ -1594,7 +1959,7 @@ class ChromePDFDownloader:
 
             if is_partial:
                 partial_issues.append(issue)
-                print(f"🔄 Issue parțial: {issue['url']} ({issue.get('last_successful_segment_end', 0)}/{issue.get('total_pages', 0)} pagini)")
+                print(f" Issue parțial: {issue['url']} ({issue.get('last_successful_segment_end', 0)}/{issue.get('total_pages', 0)} pagini)")
             else:
                 complete_issues.append(issue)
 
@@ -1616,16 +1981,16 @@ class ChromePDFDownloader:
         partial_issues.sort(key=lambda x: x.get("last_successful_segment_end", 0), reverse=True)
         complete_issues.sort(key=sort_key_for_complete, reverse=True)  # Cel mai recent primul
 
-        print(f"\n📊 SORTARE CRONOLOGICĂ APLICATĂ:")
-        print(f"   🔄 Issue-uri parțiale: {len(partial_issues)} (sortate după progres)")
+        print(f"\n SORTARE CRONOLOGICĂ APLICATĂ:")
+        print(f"    Issue-uri parțiale: {len(partial_issues)} (sortate după progres)")
 
         if complete_issues:
-            print(f"   ✅ Issue-uri complete: {len(complete_issues)} (sortate cronologic)")
-            print(f"      📅 Cel mai recent: {complete_issues[0].get('completed_at', 'N/A')}")
-            print(f"      📅 Cel mai vechi: {complete_issues[-1].get('completed_at', 'N/A')}")
+            print(f"    Issue-uri complete: {len(complete_issues)} (sortate cronologic)")
+            print(f"       Cel mai recent: {complete_issues[0].get('completed_at', 'N/A')}")
+            print(f"       Cel mai vechi: {complete_issues[-1].get('completed_at', 'N/A')}")
 
             # Afișează primele 5 pentru verificare
-            print(f"      🔍 Ordinea cronologică (primele 5):")
+            print(f"       Ordinea cronologică (primele 5):")
             for i, issue in enumerate(complete_issues[:5]):
                 url = issue.get('url', '').split('/')[-1]
                 completed_at = issue.get('completed_at', 'N/A')
@@ -1642,25 +2007,25 @@ class ChromePDFDownloader:
 
         self._save_state_safe()
 
-        print(f"✅ MERGE COMPLET cu SORTARE CRONOLOGICĂ CORECTĂ - ZERO pierderi:")
-        print(f"   📊 Total issues: {len(final_issues)} (înainte: {len(existing_issues_by_url) - new_from_disk_count})")
-        print(f"   🔄 Îmbogățite: {enriched_count}")
-        print(f"   ➕ Adăugate din disk: {new_from_disk_count}")
-        print(f"   🔄 Parțiale: {len(partial_issues)}")
-        print(f"   ✅ Complete: {len(complete_issues)}")
-        print(f"   🎯 Count păstrat/actualizat: {original_count} → {self.state['count']}")
+        print(f" MERGE COMPLET cu SORTARE CRONOLOGICĂ CORECTĂ - ZERO pierderi:")
+        print(f"    Total issues: {len(final_issues)} (înainte: {len(existing_issues_by_url) - new_from_disk_count})")
+        print(f"    Îmbogățite: {enriched_count}")
+        print(f"    Adăugate din disk: {new_from_disk_count}")
+        print(f"    Parțiale: {len(partial_issues)}")
+        print(f"    Complete: {len(complete_issues)}")
+        print(f"    Count păstrat/actualizat: {original_count} -> {self.state['count']}")
 
         if partial_issues:
-            print("🎯 Issue-urile parțiale vor fi procesate primele!")
+            print(" Issue-urile parțiale vor fi procesate primele!")
 
-        print("📅 Issue-urile complete sunt acum sortate cronologic (cel mai recent primul)!")
+        print(" Issue-urile complete sunt acum sortate cronologic (cel mai recent primul)!")
 
     def process_completed_but_unfinalized_issues(self):
         """
         Procesează issues care sunt complet descărcate dar nu au fost finalizate
         (au last_successful_segment_end == total_pages dar pages=0 și completed_at="")
         """
-        print("\n🔍 VERIFICARE: Caut issues complet descărcate dar nefinalizate...")
+        print("\n VERIFICARE: Caut issues complet descărcate dar nefinalizate...")
 
         issues_to_finalize = []
 
@@ -1688,15 +2053,15 @@ class ChromePDFDownloader:
                     'total_pages': total_pages
                 })
 
-                print(f"\n📋 GĂSIT issue nefinalizat: {url}")
-                print(f"   📊 Progres: {last_segment}/{total_pages} (100% descărcat)")
-                print(f"   ❌ Status: pages=0, completed_at=empty")
+                print(f"\n GĂSIT issue nefinalizat: {url}")
+                print(f"    Progres: {last_segment}/{total_pages} (100% descărcat)")
+                print(f"    Status: pages=0, completed_at=empty")
 
         if not issues_to_finalize:
-            print("✅ Nu am găsit issues nefinalizate - toate sunt OK!")
+            print(" Nu am găsit issues nefinalizate - toate sunt OK!")
             return
 
-        print(f"\n🎯 FINALIZARE AUTOMATĂ: {len(issues_to_finalize)} issues vor fi procesate...")
+        print(f"\n FINALIZARE AUTOMATĂ: {len(issues_to_finalize)} issues vor fi procesate...")
 
         for issue_data in issues_to_finalize:
             url = issue_data['url']
@@ -1706,16 +2071,16 @@ class ChromePDFDownloader:
 
             try:
                 print(f"\n{'='*60}")
-                print(f"🔄 PROCESEZ: {url}")
+                print(f" PROCESEZ: {url}")
                 print(f"{'='*60}")
 
                 # VERIFICARE CRITICĂ: Verifică că TOATE segmentele fizice există pe disk
-                print(f"🔍 VERIFICARE FIZICĂ: Verific că toate segmentele există pe disk...")
+                print(f" VERIFICARE FIZICĂ: Verific că toate segmentele există pe disk...")
                 is_physically_complete = self.verify_and_report_missing_segments(url, total_pages)
 
                 if not is_physically_complete:
-                    print(f"⚠ SKIP: Colecția NU este completă pe disk - lipsesc segmente!")
-                    print(f"   🔄 Issue-ul va fi reluat pentru a descărca segmentele lipsă")
+                    print(f" SKIP: Colecția NU este completă pe disk - lipsesc segmente!")
+                    print(f"    Issue-ul va fi reluat pentru a descărca segmentele lipsă")
 
                     # Găsește issue-ul în state și marchează-l ca incomplet
                     for state_issue in self.state.get("downloaded_issues", []):
@@ -1724,7 +2089,7 @@ class ChromePDFDownloader:
                             state_issue["pages"] = 0
                             state_issue["last_successful_segment_end"] = 0
                             self._save_state_safe()
-                            print(f"   ✅ Issue resetat în state.json pentru reluare")
+                            print(f"    Issue resetat în state.json pentru reluare")
                             break
                     continue
 
@@ -1732,50 +2097,50 @@ class ChromePDFDownloader:
                 final_segments = self.get_all_pdf_segments_for_issue(url)
 
                 if not final_segments:
-                    print(f"⚠ SKIP: Nu am găsit fișiere PDF pe disk pentru {url}")
+                    print(f" SKIP: Nu am găsit fișiere PDF pe disk pentru {url}")
                     continue
 
                 # Calculează progresul real
                 real_final_page = max(seg['end'] for seg in final_segments)
                 real_completion_percent = (real_final_page / total_pages) * 100
 
-                print(f"📊 Verificare disk: {real_final_page}/{total_pages} ({real_completion_percent:.1f}%)")
+                print(f" Verificare disk: {real_final_page}/{total_pages} ({real_completion_percent:.1f}%)")
 
                 if real_completion_percent < 95:
-                    print(f"⚠ SKIP: Progresul real < 95% - nu finalizez")
+                    print(f" SKIP: Progresul real < 95% - nu finalizez")
                     continue
 
                 # PASUL 1: Marchează ca terminat în JSON
-                print(f"📝 Marchez ca terminat în JSON...")
+                print(f" Marchez ca terminat în JSON...")
                 self.mark_issue_done(url, real_final_page, title=title, subtitle=subtitle, total_pages=total_pages)
-                print(f"✅ Marcat ca terminat în JSON")
+                print(f" Marcat ca terminat în JSON")
 
                 # Așteaptă salvarea JSON
                 time.sleep(2)
 
                 # PASUL 2: Procesează PDF-urile (backup + merge + mutare)
-                print(f"📦 Procesez PDF-urile (backup + merge + mutare)...")
+                print(f" Procesez PDF-urile (backup + merge + mutare)...")
                 self.copy_and_combine_issue_pdfs(url, title or url.split('/')[-1])
-                print(f"✅ PDF-urile procesate cu succes!")
+                print(f" PDF-urile procesate cu succes!")
 
                 # Așteaptă finalizarea procesării
                 time.sleep(3)
 
                 print(f"{'='*60}")
-                print(f"🎉 FINALIZAT CU SUCCES: {url}")
+                print(f" FINALIZAT CU SUCCES: {url}")
                 print(f"{'='*60}\n")
 
             except Exception as e:
-                print(f"❌ EROARE la finalizarea {url}: {e}")
+                print(f" EROARE la finalizarea {url}: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
 
-        print(f"\n✅ FINALIZARE AUTOMATĂ COMPLETĂ: {len(issues_to_finalize)} issues procesate")
+        print(f"\n FINALIZARE AUTOMATĂ COMPLETĂ: {len(issues_to_finalize)} issues procesate")
 
     def cleanup_duplicate_issues(self):
         """NOUĂ FUNCȚIE: Elimină dublurile din state.json"""
-        print("🧹 CURĂȚARE: Verific și elimin dublurile din state.json...")
+        print(" CURĂȚARE: Verific și elimin dublurile din state.json...")
 
         issues = self.state.get("downloaded_issues", [])
         if not issues:
@@ -1800,7 +2165,7 @@ class ChromePDFDownloader:
         for original_url, group in url_groups.items():
             if len(group) > 1:
                 duplicates_found += 1
-                print(f"🔍 DUBLURĂ găsită pentru {original_url}: {len(group)} intrări")
+                print(f" DUBLURĂ găsită pentru {original_url}: {len(group)} intrări")
 
                 # Găsește cea mai completă versiune
                 best_item = None
@@ -1813,13 +2178,13 @@ class ChromePDFDownloader:
                     if item.get("title"): score += 10
                     if item.get("last_successful_segment_end", 0) > 0: score += 20
 
-                    print(f"   📊 Index {idx}: score {score}, completed: {bool(item.get('completed_at'))}")
+                    print(f"    Index {idx}: score {score}, completed: {bool(item.get('completed_at'))}")
 
                     if score > best_score:
                         best_score = score
                         best_item = item
 
-                print(f"   ✅ Păstrez cea mai completă versiune (score: {best_score})")
+                print(f"    Păstrez cea mai completă versiune (score: {best_score})")
                 clean_issues.append(best_item)
             else:
                 # Nu e dublură, păstrează-l
@@ -1828,13 +2193,13 @@ class ChromePDFDownloader:
             processed_urls.add(original_url)
 
         if duplicates_found > 0:
-            print(f"🧹 ELIMINAT {duplicates_found} dubluri din {len(issues)} issues")
-            print(f"📊 Rămas cu {len(clean_issues)} issues unice")
+            print(f" ELIMINAT {duplicates_found} dubluri din {len(issues)} issues")
+            print(f" Rămas cu {len(clean_issues)} issues unice")
 
             self.state["downloaded_issues"] = clean_issues
             self._save_state_safe()
         else:
-            print("✅ Nu am găsit dubluri în state.json")
+            print(" Nu am găsit dubluri în state.json")
 
     def is_issue_really_complete(self, item, verify_physical=True):
         """
@@ -1858,7 +2223,7 @@ class ChromePDFDownloader:
         if not json_complete:
             return False
 
-        # ✅ FIX CRUCIAL: Dacă pages == total_pages, issue-ul e PROCESAT!
+        #  FIX CRUCIAL: Dacă pages == total_pages, issue-ul e PROCESAT!
         # PDF-ul final există, segmentele au fost șterse
         # NU mai verificăm fizic pe disk!
         if pages == total_pages:
@@ -1869,9 +2234,9 @@ class ChromePDFDownloader:
             is_physically_complete, missing_segments, _ = self.verify_physical_segments(url, total_pages)
 
             if not is_physically_complete:
-                print(f"⚠️ ATENȚIE: {url}")
-                print(f"   ✅ În state.json: marcat COMPLET")
-                print(f"   ❌ Pe disk: LIPSESC {len(missing_segments)} segmente!")
+                print(f" ATENȚIE: {url}")
+                print(f"    În state.json: marcat COMPLET")
+                print(f"    Pe disk: LIPSESC {len(missing_segments)} segmente!")
                 return False
 
         return True
@@ -1880,9 +2245,9 @@ class ChromePDFDownloader:
         """
         FIXED: Nu resetează issue-urile deja procesate complet
         """
-        print("🔧 CORECTEZ issue-urile marcate GREȘIT ca complete...")
+        print(" CORECTEZ issue-urile marcate GREȘIT ca complete...")
 
-        # ⚡ VERIFICARE PRIORITATE: Există issues incomplete de procesat?
+        #  VERIFICARE PRIORITATE: Există issues incomplete de procesat?
         incomplete_issues_exist = False
         for item in self.state.get("downloaded_issues", []):
             total_pages_check = item.get("total_pages", 0) or 0  # Ensure it's never None
@@ -1893,9 +2258,9 @@ class ChromePDFDownloader:
                 break
 
         if incomplete_issues_exist:
-            print("⚡ PRIORITATE: Există issues incomplete de procesat")
-            print("   ⏭️ SKIP verificarea fizică a issues complete (CAZUL 3)")
-            print("   ✅ Focusez pe finalizarea issues incomplete mai întâi!")
+            print(" PRIORITATE: Există issues incomplete de procesat")
+            print("   SKIP verificarea fizică a issues complete (CAZUL 3)")
+            print("    Focusez pe finalizarea issues incomplete mai întâi!")
 
         fixes_applied = 0
 
@@ -1906,7 +2271,7 @@ class ChromePDFDownloader:
             pages = item.get("pages", 0)
             url = item.get("url", "")
 
-            # ✅ FIX CRUCIAL: SKIP issue-uri PROCESATE complet
+            #  FIX CRUCIAL: SKIP issue-uri PROCESATE complet
             # Dacă pages == total_pages, PDF-ul final există, segmentele au fost șterse
             if completed_at and pages > 0 and total_pages and pages == total_pages:
                 # Issue PROCESAT complet - NU verificăm fizic!
@@ -1918,7 +2283,7 @@ class ChromePDFDownloader:
                 total_pages and
                 last_segment < total_pages):
 
-                print(f"🚨 CORECTEZ issue marcat GREȘIT ca complet: {url}")
+                print(f" CORECTEZ issue marcat GREȘIT ca complet: {url}")
                 item["completed_at"] = ""
                 item["pages"] = 0
                 fixes_applied += 1
@@ -1929,23 +2294,23 @@ class ChromePDFDownloader:
             if (completed_at and
                 total_pages and
                 total_pages > 0 and
-                pages < total_pages and  # ✅ NU verifică dacă pages == total_pages
+                pages < total_pages and  #  NU verifică dacă pages == total_pages
                 not incomplete_issues_exist):
 
                 is_physically_complete = self.verify_and_report_missing_segments(url, total_pages, item)
 
                 if not is_physically_complete:
-                    print(f"🚨 CORECTEZ issue marcat complet în JSON dar INCOMPLET pe disk: {url}")
+                    print(f" CORECTEZ issue marcat complet în JSON dar INCOMPLET pe disk: {url}")
                     item["completed_at"] = ""
                     item["pages"] = 0
                     fixes_applied += 1
 
         if fixes_applied > 0:
-            print(f"🔧 CORECTAT {fixes_applied} issue-uri marcate greșit ca complete")
+            print(f" CORECTAT {fixes_applied} issue-uri marcate greșit ca complete")
             self._save_state_safe()
             self._save_skip_urls()
         else:
-            print("✅ Nu am găsit issue-uri marcate greșit ca complete")
+            print(" Nu am găsit issue-uri marcate greșit ca complete")
 
         return fixes_applied
 
@@ -1953,9 +2318,9 @@ class ChromePDFDownloader:
         """NOUĂ FUNCȚIE: Corectează last_successful_segment_end bazat pe ce există EFECTIV pe disk
            PROTECTED: Protecție împotriva resetărilor masive dacă disk-ul e gol
         """
-        print("🔍 SCANEZ disk-ul și corectez progresul în JSON...")
+        print(" SCANEZ disk-ul și corectez progresul în JSON...")
 
-        # 🛡️ PROTECȚIE: Verifică dacă disk-ul are CEVA fișiere PDF
+        #  PROTECȚIE: Verifică dacă disk-ul are CEVA fișiere PDF
         # Dacă disk-ul e complet gol sau aproape gol, NU reseta nimic!
         try:
             pdf_files_on_disk = [f for f in os.listdir(self.download_dir) if f.lower().endswith('.pdf')]
@@ -1963,18 +2328,18 @@ class ChromePDFDownloader:
 
             if pdf_count < 10:
                 print(f"\n{'='*70}")
-                print(f"🚨 ATENȚIE: PROTECȚIE DISK GOL ACTIVATĂ!")
+                print(f" ATENȚIE: PROTECȚIE DISK GOL ACTIVATĂ!")
                 print(f"{'='*70}")
-                print(f"⚠️  Disk-ul are doar {pdf_count} fișiere PDF.")
+                print(f"  Disk-ul are doar {pdf_count} fișiere PDF.")
                 print(f"   Acesta pare a fi prea puțin comparativ cu issues din state.json.")
                 print(f"   POATE fișierele au fost mutate/șterse temporar?")
-                print(f"\n🛡️  PROTECȚIE: NU voi reseta progresul pentru a preveni pierderea datelor!")
+                print(f"\n  PROTECȚIE: NU voi reseta progresul pentru a preveni pierderea datelor!")
                 print(f"   Verifică dacă fișierele PDF există pe disk și încearcă din nou.")
                 print(f"{'='*70}\n")
                 return  # NU continua!
 
         except Exception as e:
-            print(f"⚠️  Nu am putut verifica disk-ul: {e}")
+            print(f"  Nu am putut verifica disk-ul: {e}")
             print(f"   Pentru siguranță, NU voi modifica progresul.")
             return
 
@@ -2042,31 +2407,31 @@ class ChromePDFDownloader:
 
                 # Dacă progresul din JSON diferă de cel real
                 if json_progress != real_progress:
-                    print(f"\n⚠️ DISCREPANȚĂ pentru {url}:")
+                    print(f"\n DISCREPANȚĂ pentru {url}:")
                     print(f"   JSON zicea: {json_progress} pagini")
                     print(f"   Disk-ul arată CONSECUTIV: {real_progress} pagini")
                     print(f"   Segmente pe disk: {len(actual_segments)}")
 
                     # Afișează segmentele găsite
                     for seg in sorted(actual_segments, key=lambda x: x['start'])[:5]:
-                        print(f"      📄 {seg['filename']} ({seg['start']}-{seg['end']})")
+                        print(f"       {seg['filename']} ({seg['start']}-{seg['end']})")
 
                     # CORECTEAZĂ cu progresul real CONSECUTIV
                     item["last_successful_segment_end"] = real_progress
 
                     # Dacă era marcat ca terminat dar nu e complet, demarchez
                     if completed_at and real_progress < total_pages:
-                        print(f"   🔄 DEMARCHEZ ca terminat - progres incomplet!")
+                        print(f"    DEMARCHEZ ca terminat - progres incomplet!")
                         item["completed_at"] = ""
                         item["pages"] = 0
 
                     corrections += 1
-                    print(f"   ✅ CORECTAT: {json_progress} → {real_progress} (CONSECUTIV)")
+                    print(f"    CORECTAT: {json_progress} -> {real_progress} (CONSECUTIV)")
             elif json_progress > 0 and not completed_at:
                 # JSON arată progres dar disk-ul e gol - DAR DOAR pentru issue-uri NEFINALIZATE!
-                print(f"\n🚨 PROBLEMĂ GRAVĂ pentru {url}:")
+                print(f"\n PROBLEMĂ GRAVĂ pentru {url}:")
                 print(f"   JSON arată {json_progress} pagini, dar disk-ul e GOL!")
-                print(f"   🔄 RESETEZ progresul la 0")
+                print(f"    RESETEZ progresul la 0")
 
                 item["last_successful_segment_end"] = 0
                 item["completed_at"] = ""
@@ -2075,27 +2440,27 @@ class ChromePDFDownloader:
                 corrections += 1
                 resets_to_zero += 1
 
-        # 🛡️ PROTECȚIE FINALĂ: Nu permite resetări masive
+        #  PROTECȚIE FINALĂ: Nu permite resetări masive
         if resets_to_zero > 20:
             print(f"\n{'='*70}")
-            print(f"🚨 ALERTĂ CRITICĂ: PROTECȚIE RESETĂRI MASIVE ACTIVATĂ!")
+            print(f" ALERTĂ CRITICĂ: PROTECȚIE RESETĂRI MASIVE ACTIVATĂ!")
             print(f"{'='*70}")
-            print(f"❌ Funcția fix_progress_based_on_disk() vrea să reseteze {resets_to_zero} issues la 0!")
+            print(f" Funcția fix_progress_based_on_disk() vrea să reseteze {resets_to_zero} issues la 0!")
             print(f"   Acesta pare a fi un număr suspect de mare.")
             print(f"   POATE fișierele PDF au fost mutate temporar sau disk-ul e inaccesibil?")
-            print(f"\n🛡️  PROTECȚIE: NU voi salva aceste modificări pentru a preveni pierderea datelor!")
+            print(f"\n  PROTECȚIE: NU voi salva aceste modificări pentru a preveni pierderea datelor!")
             print(f"   Verifică că fișierele PDF există pe disk și încearcă din nou.")
             print(f"{'='*70}\n")
             return  # NU salva!
 
         if corrections > 0:
-            print(f"\n✅ CORECTAT progresul pentru {corrections} issues")
+            print(f"\n CORECTAT progresul pentru {corrections} issues")
             if resets_to_zero > 0:
-                print(f"   ⚠️  Dintre care {resets_to_zero} au fost resetate la 0 (disk gol)")
+                print(f"     Dintre care {resets_to_zero} au fost resetate la 0 (disk gol)")
             self._save_state_safe()
             self._save_skip_urls()
         else:
-            print("✅ Progresul din JSON corespunde cu disk-ul")
+            print(" Progresul din JSON corespunde cu disk-ul")
 
     def get_pending_partial_issues(self):
         """IMPROVED: Găsește TOATE issue-urile parțiale din TOATE colecțiile"""
@@ -2128,7 +2493,7 @@ class ChromePDFDownloader:
 
                 pending_partials.append(item_with_priority)
 
-                print(f"🔄 PARȚIAL: {url}")
+                print(f" PARȚIAL: {url}")
                 print(f"   Progres: {last_segment}/{total_pages} ({completion_percent:.1f}%)")
                 print(f"   Rămân: {total_pages - last_segment} pagini")
 
@@ -2136,7 +2501,7 @@ class ChromePDFDownloader:
         pending_partials.sort(key=lambda x: x['completion_percent'], reverse=True)
 
         if pending_partials:
-            print(f"\n📋 ORDINEA DE PROCESARE ({len(pending_partials)} parțiale):")
+            print(f"\n ORDINEA DE PROCESARE ({len(pending_partials)} parțiale):")
             for i, item in enumerate(pending_partials[:10]):  # Primele 10
                 url_short = item['url'].split('/')[-1]
                 percent = item['completion_percent']
@@ -2176,7 +2541,7 @@ class ChromePDFDownloader:
     def _repair_json_missing_comma(self, file_path):
         """
         Repară JSON-ul când lipsește virgula după câmpul 'pages'
-        Pattern: "pages": <număr>\n      "completed_at" → "pages": <număr>,\n      "completed_at"
+        Pattern: "pages": <număr>\n      "completed_at" -> "pages": <număr>,\n      "completed_at"
         """
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -2188,7 +2553,7 @@ class ChromePDFDownloader:
 
             # Verifică dacă există problema
             if re.search(pattern, content):
-                print(f"🔧 REPARARE JSON: Detectată virgulă lipsă după 'pages' în {file_path}")
+                print(f" REPARARE JSON: Detectată virgulă lipsă după 'pages' în {file_path}")
 
                 # Adaugă virgula lipsă
                 fixed_content = re.sub(pattern, r'\1,\n\2', content)
@@ -2197,13 +2562,13 @@ class ChromePDFDownloader:
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(fixed_content)
 
-                print(f"✅ JSON reparat automat: virgulă adăugată după 'pages'")
+                print(f" JSON reparat automat: virgulă adăugată după 'pages'")
                 return True
 
             return False
 
         except Exception as e:
-            print(f"⚠ Eroare la repararea JSON: {e}")
+            print(f" Eroare la repararea JSON: {e}")
             return False
 
     def _read_json_file(self, file_path):
@@ -2228,13 +2593,13 @@ class ChromePDFDownloader:
                 if isinstance(data, dict) and isinstance(data.get("downloaded_issues", []), list):
                     return path, data
             except Exception as e:
-                print(f"⚠ Backup invalid ignorat: {path} ({e})")
+                print(f" Backup invalid ignorat: {path} ({e})")
         return None, None
 
     def _restore_state_from_timestamped_backup(self):
         backup_path, data = self._find_latest_valid_state_backup()
         if not backup_path:
-            print("❌ Nu am gasit niciun backup timestamp valid in State_Backups.")
+            print(" Nu am gasit niciun backup timestamp valid in State_Backups.")
             return False
 
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -2242,16 +2607,16 @@ class ChromePDFDownloader:
             if os.path.exists(self.state_path):
                 corrupt_copy = self.state_path + f".corrupt_{stamp}"
                 shutil.copy2(self.state_path, corrupt_copy)
-                print(f"💾 State corupt pastrat pentru audit: {corrupt_copy}")
+                print(f" State corupt pastrat pentru audit: {corrupt_copy}")
         except Exception as e:
-            print(f"⚠ Nu am putut salva copia corupta: {e}")
+            print(f" Nu am putut salva copia corupta: {e}")
 
         tmp_path = self.state_path + ".restore.tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         os.replace(tmp_path, self.state_path)
         shutil.copy2(self.state_path, self.state_path + ".backup")
-        print(f"✅ State restaurat din backup valid: {backup_path}")
+        print(f" State restaurat din backup valid: {backup_path}")
         return True
 
     def _load_state(self, restored_once=False):
@@ -2270,7 +2635,7 @@ class ChromePDFDownloader:
                 # PĂSTREAZĂ TOATE issue-urile existente - ZERO ȘTERS
                 existing_issues = self._normalize_downloaded_issues(loaded.get("downloaded_issues", []))
 
-                print(f"📋 ÎNCĂRCAT {len(existing_issues)} issue-uri din state.json")
+                print(f" ÎNCĂRCAT {len(existing_issues)} issue-uri din state.json")
 
                 # Găsește issue-urile parțiale
                 partial_issues = []
@@ -2281,9 +2646,12 @@ class ChromePDFDownloader:
 
                     if (last_segment > 0 and not completed_at and total_pages and last_segment < total_pages):
                         partial_issues.append(issue)
-                        print(f"🔄 PARȚIAL: {issue['url']} - {last_segment}/{total_pages} pagini")
+                        print(f" PARȚIAL: {issue['url']} - {last_segment}/{total_pages} pagini")
 
                 complete_count = len([i for i in existing_issues if i.get("completed_at")])
+
+                loaded_date = loaded.get("date", today)
+                same_day_state = (loaded_date == today)
 
                 # PĂSTREAZĂ TOT - doar actualizează data
                 self.state = {
@@ -2293,16 +2661,22 @@ class ChromePDFDownloader:
                     "pages_downloaded": loaded.get("pages_downloaded", 0),
                     "recent_links": loaded.get("recent_links", []),
                     "pending_pdf_finalizations": loaded.get("pending_pdf_finalizations", []),
-                    "daily_limit_hit": False,
+                    "daily_limit_hit": loaded.get("daily_limit_hit", False) if same_day_state else False,
+                    "download_no_file_stop": loaded.get("download_no_file_stop", False) if same_day_state else False,
+                    "download_no_file_issue": loaded.get("download_no_file_issue", "") if same_day_state else "",
+                    "download_no_file_segment": loaded.get("download_no_file_segment", "") if same_day_state else "",
+                    "download_no_file_reason": loaded.get("download_no_file_reason", "") if same_day_state else "",
+                    "download_no_file_attempts": loaded.get("download_no_file_attempts", 0) if same_day_state else 0,
+                    "download_no_file_at": loaded.get("download_no_file_at", "") if same_day_state else "",
                     "main_collection_completed": loaded.get("main_collection_completed", False),
                     "current_additional_collection_index": loaded.get("current_additional_collection_index", 0)
                 }
 
-                print(f"✅ PĂSTRAT TOT: {complete_count} complete, {len(partial_issues)} parțiale")
+                print(f" PĂSTRAT TOT: {complete_count} complete, {len(partial_issues)} parțiale")
 
             except Exception as e:
-                print(f"❌ JSON CORRUPT: {e}")
-                print(f"🛠️ RECUPEREZ din backup sau disk...")
+                print(f" JSON CORRUPT: {e}")
+                print(f" RECUPEREZ din backup sau disk...")
 
                 if not restored_once and self._restore_state_from_timestamped_backup():
                     return self._load_state(restored_once=True)
@@ -2310,10 +2684,10 @@ class ChromePDFDownloader:
                 # Încearcă backup
                 backup_path = self.state_path + ".backup"
                 if os.path.exists(backup_path) and not restored_once:
-                    print(f"🔄 Restabilesc din backup...")
+                    print(f" Restabilesc din backup...")
 
                     # REPARĂ backup-ul înainte de a-l copia
-                    print(f"🔧 Verific și repar backup-ul dacă e necesar...")
+                    print(f" Verific și repar backup-ul dacă e necesar...")
                     self._repair_json_missing_comma(backup_path)
 
                     try:
@@ -2321,10 +2695,10 @@ class ChromePDFDownloader:
                         shutil.copy2(backup_path, self.state_path)
                         return self._load_state(restored_once=True)
                     except Exception as backup_error:
-                        print(f"❌ Backup zilnic invalid, il ignor: {backup_error}")
+                        print(f" Backup zilnic invalid, il ignor: {backup_error}")
 
                 # Altfel începe gol dar SCANEAZĂ DISK-UL
-                print(f"🔍 SCANEZ DISK-UL pentru recuperare...")
+                print(f" SCANEZ DISK-UL pentru recuperare...")
                 self.state = {
                     "date": today,
                     "count": 0,
@@ -2333,11 +2707,17 @@ class ChromePDFDownloader:
                     "recent_links": [],
                     "pending_pdf_finalizations": [],
                     "daily_limit_hit": False,
+                    "download_no_file_stop": False,
+                    "download_no_file_issue": "",
+                    "download_no_file_segment": "",
+                    "download_no_file_reason": "",
+                    "download_no_file_attempts": 0,
+                    "download_no_file_at": "",
                     "main_collection_completed": False,
                     "current_additional_collection_index": 0
                 }
         else:
-            print(f"📄 Nu există state.json")
+            print(f" Nu există state.json")
             self.state = {
                 "date": today,
                 "count": 0,
@@ -2346,6 +2726,12 @@ class ChromePDFDownloader:
                 "recent_links": [],
                 "pending_pdf_finalizations": [],
                 "daily_limit_hit": False,
+                "download_no_file_stop": False,
+                "download_no_file_issue": "",
+                "download_no_file_segment": "",
+                "download_no_file_reason": "",
+                "download_no_file_attempts": 0,
+                "download_no_file_at": "",
                 "main_collection_completed": False,
                 "current_additional_collection_index": 0
             }
@@ -2355,13 +2741,13 @@ class ChromePDFDownloader:
     def _create_daily_backup(self):
         """Creează backup zilnic al state.json (o singură dată pe zi)"""
         if not os.path.exists(self.state_path):
-            print("📄 Nu există state.json pentru backup")
+            print(" Nu există state.json pentru backup")
             return
 
         try:
             self._read_json_file(self.state_path)
         except Exception as e:
-            print(f"⚠ state.json este corupt; nu creez backup zilnic din el: {e}")
+            print(f" state.json este corupt; nu creez backup zilnic din el: {e}")
             self._restore_state_from_timestamped_backup()
             return
 
@@ -2375,16 +2761,16 @@ class ChromePDFDownloader:
             backup_date = backup_time.strftime("%Y-%m-%d")
             if backup_date == today:
                 backup_is_today = True
-                print(f"✅ Backup zilnic deja existent pentru {today}")
+                print(f" Backup zilnic deja existent pentru {today}")
 
         # Creează backup doar dacă nu există sau e din altă zi
         if not backup_is_today:
             try:
                 shutil.copy2(self.state_path, backup_path)
-                print(f"💾 BACKUP ZILNIC creat: {backup_path}")
-                print(f"📅 Data backup: {today}")
+                print(f" BACKUP ZILNIC creat: {backup_path}")
+                print(f" Data backup: {today}")
             except Exception as e:
-                print(f"⚠ Nu am putut crea backup zilnic: {e}")
+                print(f" Nu am putut crea backup zilnic: {e}")
 
     def _log_completed_issue(self, issue_url, title, subtitle, pages_count):
         """Înregistrează în log zilnic issue-urile finalizate"""
@@ -2404,17 +2790,17 @@ class ChromePDFDownloader:
             if not issue_already_logged:
                 with open(log_file, "a", encoding="utf-8") as f:
                     f.write(f"\n{'='*80}\n")
-                    f.write(f"⏰ Ora finalizării: {current_time}\n")
-                    f.write(f"📋 URL: {issue_url}\n")
-                    f.write(f"📖 Titlu: {title}\n")
+                    f.write(f"Ora finalizării: {current_time}\n")
+                    f.write(f" URL: {issue_url}\n")
+                    f.write(f" Titlu: {title}\n")
                     if subtitle:
-                        f.write(f"📑 Subtitlu: {subtitle}\n")
-                    f.write(f"📄 Pagini: {pages_count}\n")
+                        f.write(f" Subtitlu: {subtitle}\n")
+                    f.write(f" Pagini: {pages_count}\n")
                     f.write(f"{'='*80}\n")
 
-                print(f"📝 Log zilnic actualizat: {log_file}")
+                print(f" Log zilnic actualizat: {log_file}")
         except Exception as e:
-            print(f"⚠ Nu am putut scrie în log zilnic: {e}")
+            print(f" Nu am putut scrie în log zilnic: {e}")
 
     def _log_state_changes(self, old_state, new_state, caller_function="Unknown"):
         """Loghează modificările făcute în state.json pentru debugging"""
@@ -2436,7 +2822,7 @@ class ChromePDFDownloader:
                 # Compară numărul total de issues
                 old_count = len(old_state.get("downloaded_issues", []))
                 new_count = len(new_state.get("downloaded_issues", []))
-                f.write(f"Total issues: {old_count} → {new_count}\n\n")
+                f.write(f"Total issues: {old_count} -> {new_count}\n\n")
 
                 # Detectează modificări masive suspecte (ALERTĂ!)
                 pages_reset_count = 0
@@ -2461,7 +2847,7 @@ class ChromePDFDownloader:
 
                 # ALERTĂ MODIFICĂRI MASIVE
                 if pages_reset_count > 10 or completed_at_reset_count > 10:
-                    f.write(f"🚨 ALERTĂ: MODIFICARE MASIVĂ DETECTATĂ!\n")
+                    f.write(f" ALERTĂ: MODIFICARE MASIVĂ DETECTATĂ!\n")
                     f.write(f"   - Issues cu pages resetat la 0: {pages_reset_count}\n")
                     f.write(f"   - Issues cu completed_at șters: {completed_at_reset_count}\n")
                     f.write(f"   - Funcție responsabilă: {caller_function}\n")
@@ -2482,7 +2868,7 @@ class ChromePDFDownloader:
                             old_val = old_item.get(key)
                             new_val = new_item.get(key)
                             if old_val != new_val:
-                                changes.append(f"  {key}: {old_val} → {new_val}")
+                                changes.append(f"  {key}: {old_val} -> {new_val}")
 
                         if changes:
                             changes_found = True
@@ -2515,7 +2901,7 @@ class ChromePDFDownloader:
                     os.remove(os.path.join(log_dir, old_log))
 
         except Exception as e:
-            print(f"⚠ Nu am putut crea log pentru modificări: {e}")
+            print(f" Nu am putut crea log pentru modificări: {e}")
 
     def _save_state_safe(self):
         """SAFE: Salvează starea cu backup timestamped și logging detaliat"""
@@ -2540,13 +2926,13 @@ class ChromePDFDownloader:
                 # Dacă se pierd mai mult de 10 issues complete, STOP!
                 if old_completed_count - new_completed_count > 10:
                     print(f"\n{'='*70}")
-                    print(f"🚨 ALERTĂ CRITICĂ: PROTECȚIE ANTI-CORUPȚIE ACTIVATĂ!")
+                    print(f" ALERTĂ CRITICĂ: PROTECȚIE ANTI-CORUPȚIE ACTIVATĂ!")
                     print(f"{'='*70}")
-                    print(f"❌ Încercare de resetare masivă detectată:")
+                    print(f" Încercare de resetare masivă detectată:")
                     print(f"   Issues complete ÎNAINTE: {old_completed_count}")
                     print(f"   Issues complete DUPĂ: {new_completed_count}")
                     print(f"   Issues PIERDUTE: {old_completed_count - new_completed_count}")
-                    print(f"\n⚠️  SALVAREA A FOST BLOCATĂ pentru a preveni corupția datelor!")
+                    print(f"\n  SALVAREA A FOST BLOCATĂ pentru a preveni corupția datelor!")
                     print(f"   State.json NU a fost modificat.")
                     print(f"{'='*70}\n")
                     return  # NU salva!
@@ -2586,7 +2972,7 @@ class ChromePDFDownloader:
             os.replace(tmp_path, self.state_path)
 
         except Exception as e:
-            print(f"⚠ Nu am putut salva state-ul: {e}")
+            print(f" Nu am putut salva state-ul: {e}")
             import traceback
             traceback.print_exc()
 
@@ -2596,12 +2982,12 @@ class ChromePDFDownloader:
             # Încearcă să restabilească din backup zilnic
             backup_path = self.state_path + ".backup"
             if os.path.exists(backup_path):
-                print(f"🔄 Încerc să restabilesc din backup...")
+                print(f" Încerc să restabilesc din backup...")
                 try:
                     shutil.copy2(backup_path, self.state_path)
-                    print(f"✅ State restabilit din backup")
+                    print(f" State restabilit din backup")
                 except:
-                    print(f"❌ Nu am putut restabili din backup")
+                    print(f" Nu am putut restabili din backup")
 
     def _save_state(self):
         """WRAPPER: Folosește salvarea safe"""
@@ -2620,7 +3006,7 @@ class ChromePDFDownloader:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             os.replace(tmp_path, self.state_path)
 
-            print("✅ JSON reparat cu caractere românești")
+            print(" JSON reparat cu caractere românești")
 
     def remaining_quota(self):
         return 99999  # Dezactivează limita artificială
@@ -2637,20 +3023,25 @@ class ChromePDFDownloader:
                 if last_successful_segment_end > item.get("last_successful_segment_end", 0):
                     item["last_successful_segment_end"] = last_successful_segment_end
 
-                if total_pages is not None and not item.get("total_pages"):
-                    item["total_pages"] = total_pages
+                if total_pages is not None and total_pages > 0:
+                    old_total_pages = item.get("total_pages")
+                    if old_total_pages != total_pages:
+                        print(f" Corectez total_pages pentru {normalized}: {old_total_pages} -> {total_pages}")
+                        item["total_pages"] = total_pages
 
-                if title and not item.get("title"):
+                if title and item.get("title") != title:
+                    if item.get("title"):
+                        print(f" Corectez titlul pentru {normalized}: {item.get('title')} -> {title}")
                     item["title"] = title
 
-                if subtitle and not item.get("subtitle"):
+                if subtitle and item.get("subtitle") != subtitle:
                     item["subtitle"] = subtitle
 
                 # Mută la început pentru prioritate
                 updated_item = self.state["downloaded_issues"].pop(i)
                 self.state["downloaded_issues"].insert(0, updated_item)
                 updated = True
-                print(f"🔄 ACTUALIZAT progres pentru: {normalized} → {last_successful_segment_end} pagini")
+                print(f" ACTUALIZAT progres pentru: {normalized} -> {last_successful_segment_end} pagini")
                 break
 
         # STEP 2: Dacă nu găsești după URL, caută după title (prevenire dubluri)
@@ -2658,7 +3049,7 @@ class ChromePDFDownloader:
             for i, item in enumerate(self.state["downloaded_issues"]):
                 if item.get("title") == title and not item["url"].startswith("http"):
                     # GĂSIT dublu cu title ca URL - șterge-l!
-                    print(f"🗑️ ȘTERG DUBLU GREȘIT: {item['url']} (era title în loc de URL)")
+                    print(f" ȘTERG DUBLU GREȘIT: {item['url']} (era title în loc de URL)")
                     self.state["downloaded_issues"].pop(i)
                     break
 
@@ -2666,7 +3057,7 @@ class ChromePDFDownloader:
         if not updated:
             # VALIDEAZĂ că URL-ul e corect
             if not normalized.startswith("https://"):
-                print(f"❌ URL INVALID: {normalized} - nu creez issue nou!")
+                print(f" URL INVALID: {normalized} - nu creez issue nou!")
                 return
 
             new_issue = {
@@ -2679,31 +3070,31 @@ class ChromePDFDownloader:
                 "total_pages": total_pages
             }
             self.state["downloaded_issues"].insert(0, new_issue)
-            print(f"➕ ADĂUGAT issue nou în progres: {normalized}")
+            print(f" ADĂUGAT issue nou în progres: {normalized}")
 
         self._save_state_safe()
-        print(f"💾 Progres salvat SAFE: {normalized} - pagini {last_successful_segment_end}/{total_pages or '?'}")
+        print(f" Progres salvat SAFE: {normalized} - pagini {last_successful_segment_end}/{total_pages or '?'}")
 
     def mark_issue_done(self, issue_url, pages_count, title=None, subtitle=None, total_pages=None):
         """ULTRA SAFE: Verificări stricte înainte de a marca ca terminat + DETECTARE MAGHIARĂ"""
         normalized = issue_url.rstrip('/')
         now_iso = datetime.now().isoformat(timespec="seconds")
 
-        print(f"🔒 VERIFICĂRI ULTRA SAFE pentru marcarea ca terminat: {normalized}")
+        print(f" VERIFICĂRI ULTRA SAFE pentru marcarea ca terminat: {normalized}")
 
         # VERIFICARE 0: Detectează posibila problemă cu maghiara
         if total_pages == 1 and pages_count == 1:
-            print(f"🚨 ALERTĂ CRITICĂ: total_pages=1 și pages_count=1")
-            print(f"🔍 Posibilă problemă de detectare pentru interfața maghiară!")
-            print(f"🛡️ REFUZ să marchez ca terminat - probabil e o eroare!")
+            print(f" ALERTĂ CRITICĂ: total_pages=1 și pages_count=1")
+            print(f" Posibilă problemă de detectare pentru interfața maghiară!")
+            print(f" REFUZ să marchez ca terminat - probabil e o eroare!")
 
             # Încearcă să re-detecteze numărul corect de pagini
-            print(f"🔄 Încerc re-detectarea numărului total de pagini...")
+            print(f" Încerc re-detectarea numărului total de pagini...")
             try:
                 if self.driver and self.current_issue_url == normalized:
                     real_total = self.get_total_pages(max_attempts=3)
                     if real_total > 1:
-                        print(f"✅ RE-DETECTAT: {real_total} pagini în loc de 1!")
+                        print(f" RE-DETECTAT: {real_total} pagini în loc de 1!")
                         # Marchează ca parțial cu progresul real
                         self._update_partial_issue_progress(
                             normalized, pages_count, total_pages=real_total, title=title, subtitle=subtitle
@@ -2712,17 +3103,17 @@ class ChromePDFDownloader:
             except:
                 pass
 
-            print(f"🛡️ BLOCARE SAFETY: NU marchez issue-uri cu 1 pagină ca terminate!")
+            print(f" BLOCARE SAFETY: NU marchez issue-uri cu 1 pagină ca terminate!")
             return
 
         # VERIFICARE 2: pages_count trebuie să fie aproape de total_pages
         completion_percentage = (pages_count / total_pages) * 100
 
         if completion_percentage < 95:  # Trebuie să fie cel puțin 95% complet
-            print(f"❌ BLOCARE SAFETY: Progres insuficient pentru {normalized}")
-            print(f"📊 Progres: {pages_count}/{total_pages} ({completion_percentage:.1f}%)")
-            print(f"🛡️ Trebuie cel puțin 95% pentru a marca ca terminat!")
-            print(f"🔄 Marchează ca parțial în loc de terminat")
+            print(f" BLOCARE SAFETY: Progres insuficient pentru {normalized}")
+            print(f" Progres: {pages_count}/{total_pages} ({completion_percentage:.1f}%)")
+            print(f" Trebuie cel puțin 95% pentru a marca ca terminat!")
+            print(f" Marchează ca parțial în loc de terminat")
 
             # Marchează ca parțial, NU ca terminat
             self._update_partial_issue_progress(
@@ -2732,9 +3123,9 @@ class ChromePDFDownloader:
 
         # VERIFICARE 3: Detectează batch size suspicious
         if pages_count < 100 and total_pages > 500:
-            print(f"❌ BLOCARE SAFETY: Progres suspect de mic pentru {normalized}")
-            print(f"📊 {pages_count} pagini par să fie doar primul batch din {total_pages}")
-            print(f"🛡️ Probabil s-a oprit prematur, NU marchez ca terminat")
+            print(f" BLOCARE SAFETY: Progres suspect de mic pentru {normalized}")
+            print(f" {pages_count} pagini par să fie doar primul batch din {total_pages}")
+            print(f" Probabil s-a oprit prematur, NU marchez ca terminat")
 
             # Marchează ca parțial
             self._update_partial_issue_progress(
@@ -2744,8 +3135,8 @@ class ChromePDFDownloader:
 
         # VERIFICARE 4: Verifică dacă pages_count pare să fie doar primul segment
         if total_pages >= 1000 and pages_count < 100:
-            print(f"❌ BLOCARE SAFETY: {pages_count} pagini din {total_pages} pare primul segment")
-            print(f"🛡️ NU marchez issues mari ca terminate cu progres atât de mic")
+            print(f" BLOCARE SAFETY: {pages_count} pagini din {total_pages} pare primul segment")
+            print(f" NU marchez issues mari ca terminate cu progres atât de mic")
 
             # Marchează ca parțial
             self._update_partial_issue_progress(
@@ -2755,9 +3146,9 @@ class ChromePDFDownloader:
 
         # ===== TOATE VERIFICĂRILE AU TRECUT - SAFE SĂ MARCHEZ CA TERMINAT =====
 
-        print(f"✅ TOATE VERIFICĂRILE ULTRA SAFE trecute pentru {normalized}")
-        print(f"📊 Progres: {pages_count}/{total_pages} ({completion_percentage:.1f}%)")
-        print(f"🎯 Marchez ca TERMINAT")
+        print(f" TOATE VERIFICĂRILE ULTRA SAFE trecute pentru {normalized}")
+        print(f" Progres: {pages_count}/{total_pages} ({completion_percentage:.1f}%)")
+        print(f" Marchez ca TERMINAT")
 
         # Continuă cu logica originală de marcare ca terminat...
         existing = None
@@ -2776,7 +3167,7 @@ class ChromePDFDownloader:
             if item_url in search_variants or normalized in [item_url, item_url + '/']:
                 existing = item
                 existing_index = i
-                print(f"🔍 GĂSIT issue existent la index {i}: {item_url}")
+                print(f" GĂSIT issue existent la index {i}: {item_url}")
                 break
 
         # Creează record-ul de completare
@@ -2804,7 +3195,7 @@ class ChromePDFDownloader:
 
             # SCOATE din poziția curentă
             updated_issue = self.state["downloaded_issues"].pop(existing_index)
-            print(f"✅ ACTUALIZAT și SCOS din poziția {existing_index}: {normalized}")
+            print(f" ACTUALIZAT și SCOS din poziția {existing_index}: {normalized}")
         else:
             # Creează issue nou complet
             updated_issue = {
@@ -2813,7 +3204,7 @@ class ChromePDFDownloader:
                 "subtitle": subtitle or "",
                 **completion_data
             }
-            print(f"➕ CREAT issue nou: {normalized}")
+            print(f" CREAT issue nou: {normalized}")
 
         # INSEREAZĂ ÎN POZIȚIA CRONOLOGICĂ CORECTĂ
         # Găsește primul issue cu completed_at mai vechi decât cel curent
@@ -2833,7 +3224,7 @@ class ChromePDFDownloader:
 
         # Inserează în poziția cronologică corectă
         self.state["downloaded_issues"].insert(insert_position, updated_issue)
-        print(f"📅 INSERAT în poziția CRONOLOGICĂ {insert_position} (după issue-urile parțiale și în ordine de completed_at)")
+        print(f" INSERAT în poziția CRONOLOGICĂ {insert_position} (după issue-urile parțiale și în ordine de completed_at)")
 
         # Actualizează contoarele SAFE
         completed_count = len([i for i in self.state["downloaded_issues"] if i.get("completed_at")])
@@ -2867,10 +3258,10 @@ class ChromePDFDownloader:
         self._save_state_safe()
         self._save_skip_urls()
 
-        print(f"✅ Issue marcat ca terminat cu SORTARE CRONOLOGICĂ CORECTĂ: {normalized}")
-        print(f"📊 Detalii: {pages_count} pagini, total_pages: {total_pages}")
-        print(f"📊 Total complet: {self.state['count']}, Total pagini: {self.state['pages_downloaded']}")
-        print(f"📅 Plasat în poziția cronologică {insert_position} din {len(self.state['downloaded_issues'])}")
+        print(f" Issue marcat ca terminat cu SORTARE CRONOLOGICĂ CORECTĂ: {normalized}")
+        print(f" Detalii: {pages_count} pagini, total_pages: {total_pages}")
+        print(f" Total complet: {self.state['count']}, Total pagini: {self.state['pages_downloaded']}")
+        print(f" Plasat în poziția cronologică {insert_position} din {len(self.state['downloaded_issues'])}")
 
     def mark_collection_complete(self, collection_url):
         """Marchează o colecție ca fiind complet procesată în skip_urls.json"""
@@ -2895,9 +3286,56 @@ class ChromePDFDownloader:
                 with open(self.skip_urls_path, "w", encoding="utf-8") as f:
                     json.dump(skip_data, f, indent=2, ensure_ascii=False)
 
-                print(f"✅ Colecția marcată ca completă: {normalized_collection}")
+                print(f" Colecția marcată ca completă: {normalized_collection}")
         except Exception as e:
-            print(f"⚠ Eroare la marcarea colecției complete: {e}")
+            print(f" Eroare la marcarea colecției complete: {e}")
+
+    def get_first_unfinished_additional_collection_index(self):
+        """
+        Ordinea din ADDITIONAL_COLLECTIONS este sursa principala.
+        Returneaza prima colectie care nu este marcata complet in skip_urls.json.
+        """
+        for idx, collection_url in enumerate(ADDITIONAL_COLLECTIONS):
+            normalized_collection = collection_url.rstrip("/")
+            if normalized_collection not in self.dynamic_skip_urls:
+                return idx
+        return len(ADDITIONAL_COLLECTIONS)
+
+    def enforce_additional_collections_order(self):
+        """
+        Nu lasa state.json sa sara peste colectii neincepute/neterminate.
+        Daca indexul salvat este mai in fata decat prima colectie neconfirmata,
+        il aduce inapoi. Daca este ramas in urma peste colectii deja complete,
+        il muta la prima colectie deschisa.
+        """
+        first_open_index = self.get_first_unfinished_additional_collection_index()
+        saved_index = self.state.get("current_additional_collection_index", 0) or 0
+
+        if first_open_index >= len(ADDITIONAL_COLLECTIONS):
+            if saved_index != len(ADDITIONAL_COLLECTIONS):
+                print("INFO: Toate colectiile din ADDITIONAL_COLLECTIONS sunt marcate complete.")
+                self.state["current_additional_collection_index"] = len(ADDITIONAL_COLLECTIONS)
+                self._save_state_safe()
+            return first_open_index
+
+        first_open_url = ADDITIONAL_COLLECTIONS[first_open_index]
+
+        if saved_index != first_open_index:
+            if saved_index > first_open_index:
+                print("WARNING: current_additional_collection_index era prea in fata.")
+                print(f"   Index salvat: {saved_index}")
+                print(f"   Prima colectie neconfirmata: {first_open_index} - {first_open_url}")
+                print("   Revin la prima colectie neterminata/neinceputa din ADDITIONAL_COLLECTIONS.")
+            else:
+                print("INFO: current_additional_collection_index era ramas in urma peste colectii deja complete.")
+                print(f"   Index salvat: {saved_index}")
+                print(f"   Prima colectie deschisa: {first_open_index} - {first_open_url}")
+
+            self.state["current_additional_collection_index"] = first_open_index
+            self.state["main_collection_completed"] = False
+            self._save_state_safe()
+
+        return first_open_index
 
     def setup_chrome_driver(self, browser="firefox"):
         """
@@ -2911,7 +3349,7 @@ class ChromePDFDownloader:
         CHROME_DEBUG_SCRIPT = r"e:\Carte\BB\17 - Site Leadership\alte\Ionel Balauta\Aryeht\Task 1 - Traduce tot site-ul\Doar Google Web\Andreea\Meditatii\2023\++Arcanum Download + Chrome\Ruleaza cand sunt plecat 3\start_chrome_debug.bat"
 
         try:
-            print("🔧 Inițializare WebDriver – încerc conectare la instanța Chrome existentă via remote debugging...")
+            print(" Inițializare WebDriver – încerc conectare la instanța Chrome existentă via remote debugging...")
             chrome_options = ChromeOptions()
             chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
             prefs = {
@@ -2925,17 +3363,17 @@ class ChromePDFDownloader:
                 self.driver = webdriver.Chrome(options=chrome_options)
                 self.wait = WebDriverWait(self.driver, self.timeout)
                 self.attached_existing = True
-                print("✅ Conectat la instanța Chrome existentă cu succes.")
+                print(" Conectat la instanța Chrome existentă cu succes.")
                 return True
             except WebDriverException as e:
-                print(f"⚠ Conexiune la Chrome existent eșuat: {e}")
-                print(f"🔄 Încerc să pornesc Chrome prin scriptul debug...")
+                print(f" Conexiune la Chrome existent eșuat: {e}")
+                print(f" Încerc să pornesc Chrome prin scriptul debug...")
 
                 # Verifică dacă scriptul batch există
                 if not os.path.exists(CHROME_DEBUG_SCRIPT):
-                    print(f"❌ EROARE: Scriptul Chrome debug nu există: {CHROME_DEBUG_SCRIPT}")
-                    print(f"⚠️  Chrome trebuie pornit MANUAL prin scriptul debug!")
-                    print(f"⏳ Așteaptă 30 secunde pentru pornire manuală...")
+                    print(f" EROARE: Scriptul Chrome debug nu există: {CHROME_DEBUG_SCRIPT}")
+                    print(f"  Chrome trebuie pornit MANUAL prin scriptul debug!")
+                    print(f"Așteaptă 30 secunde pentru pornire manuală...")
                     time.sleep(30)
 
                     # Reîncearcă conectarea
@@ -2943,47 +3381,47 @@ class ChromePDFDownloader:
                         self.driver = webdriver.Chrome(options=chrome_options)
                         self.wait = WebDriverWait(self.driver, self.timeout)
                         self.attached_existing = True
-                        print("✅ Conectat la Chrome după așteptare.")
+                        print(" Conectat la Chrome după așteptare.")
                         return True
                     except:
-                        print("❌ Încă nu pot conecta la Chrome - opresc scriptul")
+                        print(" Încă nu pot conecta la Chrome - opresc scriptul")
                         return False
 
                 # Pornește scriptul batch
                 try:
-                    print(f"🚀 Pornesc Chrome prin: {CHROME_DEBUG_SCRIPT}")
+                    print(f" Pornesc Chrome prin: {CHROME_DEBUG_SCRIPT}")
 
                     # Pornește scriptul în background (nu așteaptă finalizarea)
                     subprocess.Popen([CHROME_DEBUG_SCRIPT], shell=True,
                                    creationflags=subprocess.CREATE_NO_WINDOW)
 
-                    print(f"⏳ Aștept 10 secunde pentru pornirea Chrome...")
+                    print(f"Aștept 10 secunde pentru pornirea Chrome...")
                     time.sleep(5)
 
                     # Încearcă să se conecteze (cu retry)
                     for attempt in range(1, 6):  # 5 încercări
-                        print(f"🔄 Încercare conectare {attempt}/5...")
+                        print(f" Încercare conectare {attempt}/5...")
                         try:
                             self.driver = webdriver.Chrome(options=chrome_options)
                             self.wait = WebDriverWait(self.driver, self.timeout)
                             self.attached_existing = True
-                            print("✅ Conectat la Chrome după repornire cu succes!")
+                            print(" Conectat la Chrome după repornire cu succes!")
                             return True
                         except WebDriverException as retry_e:
                             if attempt < 5:
-                                print(f"⚠️  Încercare {attempt} eșuată, reîncerc în 5 secunde...")
+                                print(f"  Încercare {attempt} eșuată, reîncerc în 5 secunde...")
                                 time.sleep(3)
                             else:
-                                print(f"❌ Nu am putut conecta după 5 încercări: {retry_e}")
+                                print(f" Nu am putut conecta după 5 încercări: {retry_e}")
                                 return False
 
                 except Exception as script_error:
-                    print(f"❌ Eroare la pornirea scriptului Chrome: {script_error}")
-                    print(f"⚠️  Pornește MANUAL Chrome prin scriptul debug!")
+                    print(f" Eroare la pornirea scriptului Chrome: {script_error}")
+                    print(f"  Pornește MANUAL Chrome prin scriptul debug!")
                     return False
 
         except WebDriverException as e:
-            print(f"❌ Eroare la inițializarea WebDriver-ului: {e}")
+            print(f" Eroare la inițializarea WebDriver-ului: {e}")
             return False
 
     def kill_existing_firefox(self):
@@ -2996,12 +3434,12 @@ class ChromePDFDownloader:
             CREATE_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
 
             # NU mai inchidem Firefox-ul tau normal (folosim o COPIE a profilului in temp).
-            print("ℹ️ Firefox-ul tau normal NU este atins (profil copiat in temp).")
+            print("INFO: Firefox-ul tau normal NU este atins (profil copiat in temp).")
 
             # Inchidem doar geckodriver-ul orfan ramas din rulari anterioare.
             gecko_count = _ps_get_process_count('geckodriver')
             if gecko_count > 0:
-                print("🔄 Inchid geckodriver orfan...")
+                print(" Inchid geckodriver orfan...")
                 _ps_stop_process('geckodriver')
                 time.sleep(2)
 
@@ -3009,7 +3447,7 @@ class ChromePDFDownloader:
             return True
 
         except Exception as e:
-            print(f"⚠️ Eroare la închiderea Firefox: {e}")
+            print(f" Eroare la închiderea Firefox: {e}")
             return False
 
     def setup_firefox_driver(self):
@@ -3018,7 +3456,7 @@ class ChromePDFDownloader:
         Firefox-ul de automatizare este SEPARAT de Firefox-ul normal (fără banner "remote control" în cel normal).
         """
         try:
-            print("🚀 Pornesc Firefox pentru automatizare...")
+            print(" Pornesc Firefox pentru automatizare...")
 
             # === ÎNCHIDE FIREFOX EXISTENT PENTRU A ELIBERA PROFILUL ===
             # Necesar pentru că nu putem avea 2 instanțe Firefox cu același profil
@@ -3034,9 +3472,9 @@ class ChromePDFDownloader:
 
             real_profile = profiles[0] if profiles else None
             if real_profile:
-                print(f"📁 Profil Firefox sursa: {real_profile}")
+                print(f" Profil Firefox sursa: {real_profile}")
             else:
-                print("⚠ Nu am găsit niciun profil Firefox - folosesc profil temporar gol")
+                print(" Nu am găsit niciun profil Firefox - folosesc profil temporar gol")
 
             # === PORNIRE FIREFOX ===
             import shutil as _sh
@@ -3046,9 +3484,9 @@ class ChromePDFDownloader:
                 os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Mozilla Firefox\firefox.exe"),
             ] if p and os.path.exists(p)), None)
             if _ff:
-                print(f"✅ Firefox binar: {_ff}")
+                print(f" Firefox binar: {_ff}")
             else:
-                print("⚠ Nu am gasit firefox.exe explicit; las geckodriver sa caute")
+                print(" Nu am gasit firefox.exe explicit; las geckodriver sa caute")
 
             script_dir = os.path.dirname(os.path.abspath(__file__))
             _gecko = next((p for p in [
@@ -3057,16 +3495,16 @@ class ChromePDFDownloader:
                 r"C:\Windows\geckodriver.exe",
             ] if p and os.path.exists(p)), None)
             if _gecko:
-                print(f"✅ geckodriver: {_gecko}")
+                print(f" geckodriver: {_gecko}")
                 try:
                     version = subprocess.run(
                         [_gecko, "--version"], capture_output=True, text=True, timeout=10
                     ).stdout.splitlines()[0]
-                    print(f"✅ {version}")
+                    print(f" {version}")
                 except Exception:
                     pass
             else:
-                print("⚠ geckodriver local nu a fost gasit; folosesc Selenium Manager")
+                print(" geckodriver local nu a fost gasit; folosesc Selenium Manager")
 
             gecko_log_dir = os.path.join(script_dir, "Logs")
             os.makedirs(gecko_log_dir, exist_ok=True)
@@ -3080,7 +3518,7 @@ class ChromePDFDownloader:
                 try:
                     if _att > 1:
                         time.sleep(5)
-                        print(f"🔁 Reincerc pornirea Firefox (incercarea {_att}/4)...")
+                        print(f" Reincerc pornirea Firefox (incercarea {_att}/4)...")
 
                     selected_profile = _copy_profile_essential(real_profile) if real_profile else None
                     firefox_options = FirefoxOptions()
@@ -3090,7 +3528,7 @@ class ChromePDFDownloader:
                     if selected_profile:
                         firefox_options.add_argument("-profile")
                         firefox_options.add_argument(selected_profile)
-                        print(f"📋 Profil nou pentru incercarea {_att}: {selected_profile}")
+                        print(f" Profil nou pentru incercarea {_att}: {selected_profile}")
 
                     firefox_options.set_preference("browser.download.folderList", 2)
                     firefox_options.set_preference("browser.download.dir", os.path.abspath(self.download_dir))
@@ -3117,32 +3555,32 @@ class ChromePDFDownloader:
                     if _gecko:
                         service_kwargs["executable_path"] = _gecko
                     firefox_service = FirefoxService(**service_kwargs)
-                    print(f"📝 Log geckodriver: {gecko_log}")
+                    print(f" Log geckodriver: {gecko_log}")
 
                     self.driver = webdriver.Firefox(options=firefox_options, service=firefox_service)
                     self.driver.execute_script("return 1")
                     self.wait = WebDriverWait(self.driver, self.timeout)
                     self.attached_existing = False
                     self.keep_firefox_open = True
-                    print("✅ Firefox pentru automatizare pornit cu succes!")
-                    print("📝 Profilul temporar păstrează autentificarea și parolele Firefox")
+                    print(" Firefox pentru automatizare pornit cu succes!")
+                    print(" Profilul temporar păstrează autentificarea și parolele Firefox")
                     return True
                 except Exception as _e:
                     last_err = _e
-                    print(f"⚠ Firefox nu a pornit (incercare {_att}/4): {str(_e).splitlines()[0][:120]}")
+                    print(f" Firefox nu a pornit (incercare {_att}/4): {str(_e).splitlines()[0][:120]}")
                     try:
                         if firefox_service:
                             firefox_service.stop()
                     except Exception:
                         pass
 
-            print(f"❌ Eroare Firefox dupa 4 incercari: {last_err}")
+            print(f" Eroare Firefox dupa 4 incercari: {last_err}")
             import traceback
             traceback.print_exc()
             return False
 
         except Exception as e:
-            print(f"❌ Eroare Firefox: {e}")
+            print(f" Eroare Firefox: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -3165,6 +3603,62 @@ class ChromePDFDownloader:
             # Alte erori - returnează None
             return None
 
+    def close_other_tabs_keep_current(self, reason=""):
+        """Pastreaza tabul activ Arcanum si inchide taburile vechi/restaurate."""
+        try:
+            if not hasattr(self, "driver") or not self.driver:
+                return
+
+            handles = list(self.driver.window_handles)
+            if len(handles) <= 1:
+                return
+
+            current_handle = self.driver.current_window_handle
+            current_url = self.safe_get_current_url() or ""
+            if "adt.arcanum.com" not in current_url:
+                return
+
+            closed_count = 0
+            protected_markers = [
+                "conditii-de-utilizare",
+                "captcha",
+                "security",
+                "human-verification",
+            ]
+
+            for handle in handles:
+                if handle == current_handle:
+                    continue
+
+                try:
+                    self.driver.switch_to.window(handle)
+                    other_url = self.safe_get_current_url() or ""
+                    other_url_lower = other_url.lower()
+
+                    if any(marker in other_url_lower for marker in protected_markers):
+                        print(f" Pastrez tab critic separat: {other_url}")
+                        continue
+
+                    self.driver.close()
+                    closed_count += 1
+                except Exception as e:
+                    print(f" Nu am putut inchide un tab vechi: {e}")
+
+            try:
+                remaining_handles = list(self.driver.window_handles)
+                if current_handle in remaining_handles:
+                    self.driver.switch_to.window(current_handle)
+                elif remaining_handles:
+                    self.driver.switch_to.window(remaining_handles[0])
+            except Exception as e:
+                print(f" Nu am putut reveni la tabul activ dupa cleanup: {e}")
+
+            if closed_count:
+                suffix = f" ({reason})" if reason else ""
+                print(f" Inchise {closed_count} taburi Firefox inutile{suffix}.")
+        except Exception as e:
+            print(f" Eroare la cleanup taburi Firefox: {e}")
+
     def navigate_to_page(self, url):
         try:
             # VERIFICĂ ÎNTÂI DACĂ BROWSER-UL MAI EXISTĂ
@@ -3175,87 +3669,89 @@ class ChromePDFDownloader:
                 _ = self.driver.current_url
             except Exception as e:
                 # Browser-ul s-a închis sau nu funcționează
-                print(f"⚠ Browser închis sau nefuncțional ({e}), încerc reconectare...")
+                print(f" Browser închis sau nefuncțional ({e}), încerc reconectare...")
 
                 # Reîncearcă să creeze driver-ul
                 # setup_firefox_driver() va închide automat orice Firefox existent
-                print("🔄 Repornesc Firefox pentru reconectare...")
+                print(" Repornesc Firefox pentru reconectare...")
                 if not self.setup_chrome_driver(browser="firefox"):
-                    print("❌ Nu pot reconecta browser-ul")
+                    print(" Nu pot reconecta browser-ul")
                     return False
-                print("✅ Firefox repornit cu succes!")
+                print(" Firefox repornit cu succes!")
 
-            print(f"🌐 Navighez către: {url}")
+            print(f" Navighez către: {url}")
             self.driver.get(url)
             self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'body')))
-            print("✅ Pagina încărcată.")
+            print(" Pagina încărcată.")
 
             # Așteaptă ca pagina să se stabilizeze (delay pentru securitate site)
-            print("⏳ Aștept 3 secunde pentru stabilizarea paginii...")
+            print("Aștept 3 secunde pentru stabilizarea paginii...")
             time.sleep(3)
 
-            # 🔧 VERIFICARE 1: MENTENANȚĂ (403 Forbidden)
+            self.close_other_tabs_keep_current("pagina Arcanum incarcata")
+
+            #  VERIFICARE 1: MENTENANȚĂ (403 Forbidden)
             if self.detect_403_maintenance():
-                print(f"⚠️ Detectat 403 Forbidden - Arcanum în mentenanță")
+                print(f" Detectat 403 Forbidden - Arcanum în mentenanță")
 
                 # Așteaptă finalul mentenanței (10 min x 3 încercări = 30 min max)
                 if self.wait_for_maintenance(wait_minutes=10, max_retries=3):
-                    print(f"✅ Mentenanță finalizată - continuăm")
+                    print(f" Mentenanță finalizată - continuăm")
                     # Site-ul e online, continuă
                 else:
-                    print(f"❌ Mentenanță prea lungă - opresc scriptul")
+                    print(f" Mentenanță prea lungă - opresc scriptul")
                     return False
 
-            # 🚨 VERIFICARE 2: CAPTCHA
+            #  VERIFICARE 2: CAPTCHA
             if self.detect_captcha():
                 print(f"\n{'='*60}")
-                print(f"🚨🚨🚨 CAPTCHA DETECTAT - OPRIRE COMPLETĂ! 🚨🚨🚨")
+                print(f" CAPTCHA DETECTAT - OPRIRE COMPLETĂ! ")
                 print(f"{'='*60}")
-                print(f"❌ Sistemul Arcanum necesită verificare umană (CAPTCHA)")
-                print(f"❌ Scriptul NU poate rezolva CAPTCHA automat")
-                print(f"💾 Salvez progresul curent și opresc scriptul...")
+                print(f" Sistemul Arcanum necesită verificare umană (CAPTCHA)")
+                print(f" Scriptul NU poate rezolva CAPTCHA automat")
+                print(f" Salvez progresul curent și opresc scriptul...")
                 self.state["captcha_detected"] = True
                 self.state["captcha_url"] = self.driver.current_url
                 self._save_state()
-                print(f"\n🛑 SCRIPTUL A FOST OPRIT DIN CAUZA CAPTCHA")
-                print(f"📋 URL CAPTCHA: {self.driver.current_url}")
-                print(f"📋 Progresul a fost salvat în state.json")
-                print(f"⚠️  ACȚIUNE NECESARĂ: Rezolvă CAPTCHA manual în browser")
+                print(f"\n SCRIPTUL A FOST OPRIT DIN CAUZA CAPTCHA")
+                print(f" URL CAPTCHA: {self.driver.current_url}")
+                print(f" Progresul a fost salvat în state.json")
+                print(f"  ACȚIUNE NECESARĂ: Rezolvă CAPTCHA manual în browser")
                 print(f"{'='*60}\n")
-                raise SystemExit("🚨 OPRIRE CAPTCHA - Verificare umană necesară!")
+                raise SystemExit(" OPRIRE CAPTCHA - Verificare umană necesară!")
 
             return True
         except SystemExit:
             # Re-ridică SystemExit pentru a opri scriptul complet
             raise
         except Exception as e:
-            print(f"❌ Eroare la navigare sau încărcare: {e}")
+            print(f" Eroare la navigare sau încărcare: {e}")
             # ÎNCEARCĂ O RECONECTARE CA ULTIM RESORT
             try:
-                print("🔄 Încerc reconectare de urgență...")
+                print(" Încerc reconectare de urgență...")
                 if self.setup_chrome_driver(browser="firefox"):
                     self.driver.get(url)
                     self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'body')))
-                    print("✅ Reconectat și navigat cu succes!")
+                    print(" Reconectat și navigat cu succes!")
 
                     time.sleep(2)
 
-                    # 🔧 VERIFICARE 403 DUPĂ RECONECTARE
+                    #  VERIFICARE 403 DUPĂ RECONECTARE
                     if self.detect_403_maintenance():
-                        print(f"⚠️ 403 după reconectare")
+                        print(f" 403 după reconectare")
                         if self.wait_for_maintenance(wait_minutes=10, max_retries=3):
-                            print(f"✅ Mentenanță finalizată după reconectare")
+                            print(f" Mentenanță finalizată după reconectare")
                         else:
-                            print(f"❌ Mentenanță prea lungă după reconectare")
+                            print(f" Mentenanță prea lungă după reconectare")
                             return False
 
-                    # 🚨 VERIFICARE CAPTCHA DUPĂ RECONECTARE
+                    #  VERIFICARE CAPTCHA DUPĂ RECONECTARE
                     if self.detect_captcha():
-                        print(f"\n🚨 CAPTCHA DETECTAT DUPĂ RECONECTARE - OPRIRE!")
+                        print(f"\n CAPTCHA DETECTAT DUPĂ RECONECTARE - OPRIRE!")
                         self.state["captcha_detected"] = True
                         self.state["captcha_url"] = self.driver.current_url
                         self._save_state()
-                        raise SystemExit("🚨 OPRIRE CAPTCHA - Verificare umană necesară!")
+                        raise SystemExit(" OPRIRE CAPTCHA - Verificare umană necesară!")
 
                     return True
             except SystemExit:
@@ -3305,16 +3801,16 @@ class ChromePDFDownloader:
 
                     for div in adornment_divs:
                         text = div.text.strip()
-                        print(f"🔍 Verific div adornment: '{text}'")
+                        print(f" Verific div adornment: '{text}'")
 
                         # Caută pattern-ul "/ 146"
                         match = re.search(r'/\s*(\d+)', text)
                         if match:
                             total = int(match.group(1))
-                            print(f"✅ TOTAL PAGINI detectat din adornment maghiar: {total}")
+                            print(f" TOTAL PAGINI detectat din adornment maghiar: {total}")
                             return total
                 except Exception as e:
-                    print(f"⚠ Eroare în detectare maghiară: {e}")
+                    print(f" Eroare în detectare maghiară: {e}")
 
                 # Metoda 2: Caută în toate elementele cu text (backup)
                 all_texts = self.driver.find_elements(By.XPATH,
@@ -3322,7 +3818,7 @@ class ChromePDFDownloader:
 
                 for el in all_texts:
                     text = el.text.strip()
-                    print(f"🔍 Verific text element: '{text}'")
+                    print(f" Verific text element: '{text}'")
 
                     for pattern in page_patterns:
                         matches = re.findall(pattern, text)
@@ -3330,11 +3826,11 @@ class ChromePDFDownloader:
                             if pattern == page_patterns[0]:  # "număr / total"
                                 current, total = matches[0]
                                 total = int(total)
-                                print(f"✅ TOTAL PAGINI detectat din '{text}': {total} (curent: {current})")
+                                print(f" TOTAL PAGINI detectat din '{text}': {total} (curent: {current})")
                                 return total
                             else:  # "/ total", "of total", etc.
                                 total = int(matches[0])
-                                print(f"✅ TOTAL PAGINI detectat din '{text}': {total}")
+                                print(f" TOTAL PAGINI detectat din '{text}': {total}")
                                 return total
 
                 # Metoda 3: JavaScript mai robust pentru maghiară
@@ -3391,28 +3887,28 @@ class ChromePDFDownloader:
                     current = js_result.get('current', 0)
                     text = js_result['text']
                     pattern = js_result['pattern']
-                    print(f"✅ TOTAL PAGINI detectat prin JS: {total} din '{text}' (pattern: {pattern})")
+                    print(f" TOTAL PAGINI detectat prin JS: {total} din '{text}' (pattern: {pattern})")
                     return total
 
-                print(f"⚠ ({attempt}) Nu am găsit încă numărul total de pagini, reîncerc în {delay_between}s...")
+                print(f" ({attempt}) Nu am găsit încă numărul total de pagini, reîncerc în {delay_between}s...")
                 time.sleep(delay_between)
 
             except Exception as e:
-                print(f"⚠ ({attempt}) Eroare în get_total_pages: {e}")
+                print(f" ({attempt}) Eroare în get_total_pages: {e}")
                 time.sleep(delay_between)
 
-        print("❌ Nu s-a reușit extragerea numărului total de pagini după multiple încercări.")
+        print(" Nu s-a reușit extragerea numărului total de pagini după multiple încercări.")
         return 0
 
     def debug_page_detection(self):
         """Funcție de debugging pentru a vedea ce detectează în interfața maghiară"""
         try:
-            print("🔍 DEBUG: Analizez interfața pentru detectarea paginilor...")
+            print(" DEBUG: Analizez interfața pentru detectarea paginilor...")
 
             # 1. Verifică adornment-urile
             adornments = self.driver.find_elements(By.CSS_SELECTOR,
                 'div.MuiInputAdornment-root')
-            print(f"📊 Găsite {len(adornments)} adornment-uri:")
+            print(f" Găsite {len(adornments)} adornment-uri:")
             for i, div in enumerate(adornments):
                 text = div.text.strip()
                 html = div.get_attribute('outerHTML')[:100]
@@ -3420,7 +3916,7 @@ class ChromePDFDownloader:
 
             # 2. Caută toate elementele cu "/"
             slash_elements = self.driver.find_elements(By.XPATH, "//*[contains(text(), '/')]")
-            print(f"📊 Găsite {len(slash_elements)} elemente cu '/':")
+            print(f" Găsite {len(slash_elements)} elemente cu '/':")
             for i, el in enumerate(slash_elements[:5]):  # Primele 5
                 text = el.text.strip()
                 tag = el.tag_name
@@ -3438,12 +3934,12 @@ class ChromePDFDownloader:
                 return relevantLines.slice(0, 10);
             """)
 
-            print(f"📊 Linii relevante din JS:")
+            print(f" Linii relevante din JS:")
             for i, line in enumerate(js_result):
                 print(f"   {i+1}. '{line.strip()}'")
 
         except Exception as e:
-            print(f"❌ Eroare în debug: {e}")
+            print(f" Eroare în debug: {e}")
 
     def open_save_popup(self):
         try:
@@ -3455,11 +3951,11 @@ class ChromePDFDownloader:
                 time.sleep(0.5)
 
             # PASUL 2: Așteaptă ca pagina să se încarce complet (delay pentru securitate site)
-            print("⏳ Aștept 2 secunde pentru încărcarea completă a paginii...")
+            print("Aștept 2 secunde pentru încărcarea completă a paginii...")
             time.sleep(2)
 
             # PASUL 3: Așteaptă ca elementul să fie vizibil, stabil și clickable
-            print("🔍 Caut butonul de salvare (SaveAltIcon)...")
+            print(" Caut butonul de salvare (SaveAltIcon)...")
             try:
                 # Așteaptă mai întâi ca elementul să fie prezent
                 svg = WebDriverWait(self.driver, 10).until(
@@ -3473,11 +3969,11 @@ class ChromePDFDownloader:
                 svg = WebDriverWait(self.driver, 10).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, 'svg[data-testid="SaveAltIcon"]'))
                 )
-                print("✅ Butonul de salvare găsit și pregătit")
+                print(" Butonul de salvare găsit și pregătit")
             except Exception as e:
-                print(f"⚠ Eroare la găsirea butonului: {e}")
+                print(f" Eroare la găsirea butonului: {e}")
                 # Reîncearcă cu un delay suplimentar
-                print("⏳ Aștept încă 2 secunde și reîncerc...")
+                print("Aștept încă 2 secunde și reîncerc...")
                 time.sleep(2)
                 svg = self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'svg[data-testid="SaveAltIcon"]')))
 
@@ -3497,7 +3993,7 @@ class ChromePDFDownloader:
                     time.sleep(0.5)
 
                     # Folosește JavaScript pentru click pentru a declanșa corect event-urile
-                    print(f"🖱️ Încerc click pe butonul de salvare (încercarea {attempt})...")
+                    print(f" Încerc click pe butonul de salvare (încercarea {attempt})...")
 
                     # Încearcă mai întâi cu JavaScript pentru a declanșa corect event-urile
                     try:
@@ -3515,20 +4011,20 @@ class ChromePDFDownloader:
                                 button.dispatchEvent(event);
                             });
                         """, button)
-                        print(f"✅ Click efectuat prin JavaScript cu event-uri (încercarea {attempt})")
+                        print(f" Click efectuat prin JavaScript cu event-uri (încercarea {attempt})")
                     except Exception as js_error:
-                        print(f"⚠ JavaScript click eșuat: {js_error}, încerc click normal...")
+                        print(f" JavaScript click eșuat: {js_error}, încerc click normal...")
                         try:
                             button.click()
-                            print(f"✅ Click efectuat normal (încercarea {attempt})")
+                            print(f" Click efectuat normal (încercarea {attempt})")
                         except Exception as normal_error:
-                            print(f"⚠ Click normal eșuat: {normal_error}")
+                            print(f" Click normal eșuat: {normal_error}")
                             # Reîncearcă cu JavaScript simplu
                             self.driver.execute_script("arguments[0].click();", button)
-                            print(f"✅ Click efectuat prin JavaScript simplu (încercarea {attempt})")
+                            print(f" Click efectuat prin JavaScript simplu (încercarea {attempt})")
 
                     # Așteaptă mai mult după click pentru ca popup-ul să apară complet
-                    print("⏳ Aștept 4 secunde pentru apariția completă a popup-ului...")
+                    print("Aștept 4 secunde pentru apariția completă a popup-ului...")
                     time.sleep(4)
 
                     # VERIFICARE RAPIDĂ: Verifică dacă popup-ul a apărut efectiv folosind JavaScript
@@ -3559,11 +4055,11 @@ class ChromePDFDownloader:
                         """)
 
                         if popup_exists:
-                            print("✅ Popup-ul a apărut și este vizibil (detectat prin JavaScript)")
+                            print(" Popup-ul a apărut și este vizibil (detectat prin JavaScript)")
                             return True
                         else:
                             # Așteaptă puțin mai mult și verifică din nou
-                            print("⏳ Popup-ul nu este încă vizibil, aștept încă 3 secunde...")
+                            print("Popup-ul nu este încă vizibil, aștept încă 3 secunde...")
                             time.sleep(3)
 
                             # Verifică din nou cu mai multe încercări
@@ -3581,7 +4077,7 @@ class ChromePDFDownloader:
                                 """)
 
                                 if popup_exists:
-                                    print(f"✅ Popup-ul a apărut la verificarea {check_attempt + 1}")
+                                    print(f" Popup-ul a apărut la verificarea {check_attempt + 1}")
                                     return True
 
                                 if check_attempt < 2:
@@ -3593,12 +4089,12 @@ class ChromePDFDownloader:
                                     EC.presence_of_element_located((By.ID, "first page"))
                                 )
                                 if first_input.is_displayed():
-                                    print("✅ Input-urile sunt disponibile - popup-ul este deschis")
+                                    print(" Input-urile sunt disponibile - popup-ul este deschis")
                                     return True
                             except:
                                 pass
 
-                            print(f"⚠ Popup-ul nu este detectat după click (încercarea {attempt}), reîncerc...")
+                            print(f" Popup-ul nu este detectat după click (încercarea {attempt}), reîncerc...")
                             if attempt < 4:
                                 time.sleep(2)
                                 # Reîncarcă butonul pentru următoarea încercare
@@ -3614,10 +4110,10 @@ class ChromePDFDownloader:
                                     pass
                                 continue
                             else:
-                                print("⚠ Popup-ul nu apare după multiple încercări")
+                                print(" Popup-ul nu apare după multiple încercări")
                                 return False  # Returnează False pentru a opri procesarea
                     except Exception as e:
-                        print(f"⚠ Verificare popup: {e}")
+                        print(f" Verificare popup: {e}")
                         if attempt < 4:
                             time.sleep(2)
                             continue
@@ -3625,22 +4121,22 @@ class ChromePDFDownloader:
                             return True  # Continuă oricum
 
                 except ElementClickInterceptedException:
-                    print(f"⚠ Click interceptat (încercarea {attempt}), trimit ESC și reiau...")
+                    print(f" Click interceptat (încercarea {attempt}), trimit ESC și reiau...")
                     self.driver.switch_to.active_element.send_keys(Keys.ESCAPE)
                     time.sleep(2)
                     continue
                 except Exception as e:
-                    print(f"⚠ Eroare la click (încercarea {attempt}): {e}")
+                    print(f" Eroare la click (încercarea {attempt}): {e}")
                     if attempt < 4:
                         time.sleep(2)
                         continue
                     else:
                         raise
 
-            print("❌ Nu am reușit să dau click pe butonul de deschidere a popup-ului după retry-uri.")
+            print(" Nu am reușit să dau click pe butonul de deschidere a popup-ului după retry-uri.")
             return False
         except Exception as e:
-            print(f"❌ Nu am reușit să deschid popup-ul de salvare: {e}")
+            print(f" Nu am reușit să deschid popup-ul de salvare: {e}")
             return False
 
     def detect_save_button_multilingual(self):
@@ -3663,7 +4159,7 @@ class ChromePDFDownloader:
                 save_btn = self.driver.find_element(By.XPATH,
                     f'//button[.//text()[contains(normalize-space(.), "{text}")]]')
                 if save_btn and save_btn.is_enabled():
-                    print(f"✅ Buton de salvare găsit cu textul: '{text}'")
+                    print(f" Buton de salvare găsit cu textul: '{text}'")
                     return save_btn
             except:
                 continue
@@ -3676,7 +4172,7 @@ class ChromePDFDownloader:
                 text = btn.text.strip().lower()
                 # Verifică dacă conține cuvinte cheie în orice limbă
                 if any(keyword in text for keyword in ['salv', 'save', 'ment', 'ulož', 'speich']):
-                    print(f"✅ Buton de salvare găsit prin CSS cu textul: '{btn.text}'")
+                    print(f" Buton de salvare găsit prin CSS cu textul: '{btn.text}'")
                     return btn
         except:
             pass
@@ -3686,7 +4182,7 @@ class ChromePDFDownloader:
     def fill_and_save_range(self, start, end):
         try:
             # PASUL 1: Verifică că popup-ul există și este vizibil folosind JavaScript
-            print("🔍 Verific dacă popup-ul este deschis...")
+            print(" Verific dacă popup-ul este deschis...")
 
             # Așteaptă mai mult pentru ca popup-ul să apară
             time.sleep(2)
@@ -3709,9 +4205,9 @@ class ChromePDFDownloader:
                 """)
 
                 if popup_visible:
-                    print("✅ Popup-ul este deschis și vizibil (detectat prin JavaScript)")
+                    print(" Popup-ul este deschis și vizibil (detectat prin JavaScript)")
                 else:
-                    print("⏳ Popup-ul nu este încă vizibil, aștept încă 2 secunde...")
+                    print("Popup-ul nu este încă vizibil, aștept încă 2 secunde...")
                     time.sleep(2)
 
                     # Verifică din nou
@@ -3728,7 +4224,7 @@ class ChromePDFDownloader:
                     """)
 
                     if popup_visible:
-                        print("✅ Popup-ul este acum vizibil")
+                        print(" Popup-ul este acum vizibil")
                     else:
                         # Încearcă să găsească input-urile direct cu WebDriverWait
                         try:
@@ -3736,26 +4232,26 @@ class ChromePDFDownloader:
                                 EC.presence_of_element_located((By.ID, "first page"))
                             )
                             if first_input.is_displayed():
-                                print("✅ Input-urile sunt disponibile - popup-ul este deschis")
+                                print(" Input-urile sunt disponibile - popup-ul este deschis")
                             else:
-                                print("⚠ Popup-ul nu este detectat, dar continuăm (poate apare în timpul completării)")
+                                print(" Popup-ul nu este detectat, dar continuăm (poate apare în timpul completării)")
                         except:
-                            print("⚠ Popup-ul nu este detectat, dar continuăm (poate apare în timpul completării)")
+                            print(" Popup-ul nu este detectat, dar continuăm (poate apare în timpul completării)")
             except Exception as e:
-                print(f"⚠ Verificare popup prin JavaScript: {e}")
+                print(f" Verificare popup prin JavaScript: {e}")
                 # Continuă oricum
 
             # Verifică că suntem încă pe pagina corectă
             try:
                 current_url = self.driver.current_url
                 if self.current_issue_url not in current_url and not current_url.startswith('chrome://'):
-                    print(f"⚠ ATENȚIE: URL s-a schimbat în timpul așteptării popup: {current_url}")
+                    print(f" ATENȚIE: URL s-a schimbat în timpul așteptării popup: {current_url}")
                     # Nu returnăm False aici, continuăm să încercăm
             except:
                 pass
 
             # PASUL 2: Găsește și completează primul input cu verificări multiple și retry-uri
-            print("🔍 Caut primul input (first page)...")
+            print(" Caut primul input (first page)...")
             first_input = None
             max_retries = 5
 
@@ -3780,7 +4276,7 @@ class ChromePDFDownloader:
                             WebDriverWait(self.driver, 10).until(
                                 lambda d: first_input.is_displayed() and first_input.is_enabled()
                             )
-                            print(f"✅ Primul input găsit folosind {selector_type}: {selector_value}")
+                            print(f" Primul input găsit folosind {selector_type}: {selector_value}")
                             break
                         except:
                             continue
@@ -3793,32 +4289,32 @@ class ChromePDFDownloader:
                 except Exception as e:
                     if retry < max_retries - 1:
                         wait_time = (retry + 1) * 1
-                        print(f"⚠ Nu am găsit primul input (încercarea {retry + 1}/{max_retries}), aștept {wait_time}s...")
+                        print(f" Nu am găsit primul input (încercarea {retry + 1}/{max_retries}), aștept {wait_time}s...")
                         time.sleep(wait_time)
                     else:
-                        print(f"❌ Nu am putut găsi primul input după {max_retries} încercări: {e}")
+                        print(f" Nu am putut găsi primul input după {max_retries} încercări: {e}")
                         # Debug: afișează structura paginii
                         try:
                             page_source_snippet = self.driver.page_source[:2000]
-                            print(f"🔍 Fragment din pagina (primele 2000 caractere):\n{page_source_snippet}")
+                            print(f" Fragment din pagina (primele 2000 caractere):\n{page_source_snippet}")
                         except:
                             pass
                         return False
 
             if not first_input:
-                print("❌ Primul input nu a fost găsit")
+                print(" Primul input nu a fost găsit")
                 return False
 
-            print("⏳ Aștept 1s înainte de a completa primul input...")
+            print("Aștept 1s înainte de a completa primul input...")
             time.sleep(1)
 
             # Verifică din nou că input-ul este disponibil
             try:
                 if not first_input.is_displayed() or not first_input.is_enabled():
-                    print("⚠ Input-ul nu mai este disponibil, reîncerc găsirea...")
+                    print(" Input-ul nu mai este disponibil, reîncerc găsirea...")
                     first_input = self.wait.until(EC.element_to_be_clickable((By.ID, "first page")))
             except:
-                print("❌ Nu pot re-găsi primul input")
+                print(" Nu pot re-găsi primul input")
                 return False
 
             # Completează primul input
@@ -3829,16 +4325,16 @@ class ChromePDFDownloader:
                 time.sleep(0.5)
                 first_input.send_keys(str(start))
                 time.sleep(0.5)
-                print(f"✏️ Am introdus primul număr: {start}")
+                print(f" Am introdus primul număr: {start}")
             except Exception as e:
-                print(f"❌ Eroare la completarea primului input: {e}")
+                print(f" Eroare la completarea primului input: {e}")
                 return False
 
             # PASUL 3: Găsește și completează al doilea input
-            print("⏳ Aștept 1s înainte de a completa al doilea input...")
+            print("Aștept 1s înainte de a completa al doilea input...")
             time.sleep(1)
 
-            print("🔍 Caut al doilea input (last page)...")
+            print(" Caut al doilea input (last page)...")
             try:
                 # Așteaptă mai întâi ca elementul să fie prezent
                 last_input = WebDriverWait(self.driver, 15).until(
@@ -3852,9 +4348,9 @@ class ChromePDFDownloader:
                 WebDriverWait(self.driver, 15).until(
                     lambda d: last_input.is_enabled() and last_input.is_displayed()
                 )
-                print("✅ Al doilea input găsit și pregătit")
+                print(" Al doilea input găsit și pregătit")
             except Exception as e:
-                print(f"❌ Nu am putut găsi al doilea input: {e}")
+                print(f" Nu am putut găsi al doilea input: {e}")
                 return False
 
             # Completează al doilea input
@@ -3865,17 +4361,17 @@ class ChromePDFDownloader:
                 time.sleep(0.5)
                 last_input.send_keys(str(end))
                 time.sleep(0.5)
-                print(f"✏️ Am introdus al doilea număr: {end}")
+                print(f" Am introdus al doilea număr: {end}")
             except Exception as e:
-                print(f"❌ Eroare la completarea celui de-al doilea input: {e}")
+                print(f" Eroare la completarea celui de-al doilea input: {e}")
                 return False
 
             # PASUL 4: Așteaptă înainte de a apăsa butonul de salvare (delay pentru securitate)
-            print("⏳ Aștept 3 secunde înainte de a apăsa butonul de salvare (delay securitate)...")
-            time.sleep(3)
+            print(f"Aștept {PRE_SAVE_CLICK_DELAY_SECONDS}s înainte de a apăsa butonul de salvare...")
+            time.sleep(PRE_SAVE_CLICK_DELAY_SECONDS)
 
             # PASUL 5: Găsește și apasă butonul de salvare
-            print("🔍 Caut butonul de salvare...")
+            print(" Caut butonul de salvare...")
             save_btn = self.detect_save_button_multilingual()
 
             if save_btn:
@@ -3886,25 +4382,25 @@ class ChromePDFDownloader:
                     )
                     # Scroll în viewport
                     self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", save_btn)
-                    time.sleep(1)
+                    time.sleep(0.5)
 
                     save_btn.click()
-                    print(f"✅ Cererea de salvare pentru segmentul {start}-{end} a fost trimisa.")
+                    print(f" Cererea de salvare pentru segmentul {start}-{end} a fost trimisa.")
 
                     # PASUL 6: Așteaptă după click pentru ca descărcarea să înceapă
-                    print("⏳ Aștept 2 secunde pentru inițierea descărcării...")
-                    time.sleep(2)
+                    print(f"Aștept {POST_SAVE_CLICK_DELAY_SECONDS}s pentru inițierea descărcării...")
+                    time.sleep(POST_SAVE_CLICK_DELAY_SECONDS)
 
                     return True
                 except Exception as e:
-                    print(f"❌ Eroare la click pe butonul de salvare: {e}")
+                    print(f" Eroare la click pe butonul de salvare: {e}")
                     return False
             else:
-                print(f"❌ Nu am găsit butonul de salvare în nicio limbă pentru segmentul {start}-{end}")
+                print(f" Nu am găsit butonul de salvare în nicio limbă pentru segmentul {start}-{end}")
                 return False
 
         except Exception as e:
-            print(f"❌ Eroare la completarea/salvarea intervalului {start}-{end}: {e}")
+            print(f" Eroare la completarea/salvarea intervalului {start}-{end}: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -3924,11 +4420,11 @@ class ChromePDFDownloader:
 
                     if ("Daily download limit reached" in body_text or
                         "Terms and conditions" in body_text):
-                        print(f"⚠ Limita zilnică detectată în fereastra: {handle}")
+                        print(f" Limita zilnică detectată în fereastra: {handle}")
                         limit_reached = True
 
                         if handle != current_window and len(all_handles) > 1:
-                            print(f"🗙 Închid fereastra cu limita zilnică: {handle}")
+                            print(f" Închid fereastra cu limita zilnică: {handle}")
                             self.driver.close()
                         break
 
@@ -3944,7 +4440,7 @@ class ChromePDFDownloader:
                 pass
 
         except Exception as e:
-            print(f"⚠ Eroare la verificarea ferestrelor: {e}")
+            print(f" Eroare la verificarea ferestrelor: {e}")
 
         if limit_reached and set_flag:
             self.state["daily_limit_hit"] = True
@@ -3954,7 +4450,7 @@ class ChromePDFDownloader:
 
     def detect_captcha(self):
         """
-        🚨 FUNCȚIE CRITICĂ: Detectează CAPTCHA Arcanum și oprește scriptul complet
+         FUNCȚIE CRITICĂ: Detectează CAPTCHA Arcanum și oprește scriptul complet
 
         Detectează 3 tipuri de CAPTCHA:
         1. Textul "Let's confirm you are human" + butonul "amzn-captcha-verify-button"
@@ -3976,10 +4472,10 @@ class ChromePDFDownloader:
                      'Let\'s confirm you are human' in body_text) and
                     'Complete the security check before continuing' in body_text):
                     print(f"\n{'='*60}")
-                    print(f"🚨 CAPTCHA DETECTAT (Tip 1) - VERIFICARE UMANĂ!")
+                    print(f" CAPTCHA DETECTAT (Tip 1) - VERIFICARE UMANĂ!")
                     print(f"{'='*60}")
                     print(f"URL: {current_url}")
-                    print(f"🛑 CAPTCHA detectat: 'Let's confirm you are human'")
+                    print(f" CAPTCHA detectat: 'Let's confirm you are human'")
                     return True
 
                 # CAPTCHA Tip 2: "Human Verification" cu JavaScript disabled message
@@ -3987,10 +4483,10 @@ class ChromePDFDownloader:
                     'JavaScript is disabled' in page_source and
                     'you need to verify that you\'re not a robot by solving a CAPTCHA puzzle' in page_source):
                     print(f"\n{'='*60}")
-                    print(f"🚨 CAPTCHA DETECTAT (Tip 2) - HUMAN VERIFICATION!")
+                    print(f" CAPTCHA DETECTAT (Tip 2) - HUMAN VERIFICATION!")
                     print(f"{'='*60}")
                     print(f"URL: {current_url}")
-                    print(f"🛑 CAPTCHA detectat: 'Human Verification' page")
+                    print(f" CAPTCHA detectat: 'Human Verification' page")
                     return True
 
             except Exception:
@@ -4001,10 +4497,10 @@ class ChromePDFDownloader:
                 captcha_button = self.driver.find_element(By.ID, "amzn-captcha-verify-button")
                 if captcha_button:
                     print(f"\n{'='*60}")
-                    print(f"🚨 CAPTCHA DETECTAT (Tip 3) - BUTON CAPTCHA!")
+                    print(f" CAPTCHA DETECTAT (Tip 3) - BUTON CAPTCHA!")
                     print(f"{'='*60}")
                     print(f"URL: {current_url}")
-                    print(f"🛑 CAPTCHA detectat - buton de verificare găsit!")
+                    print(f" CAPTCHA detectat - buton de verificare găsit!")
                     return True
             except Exception:
                 pass
@@ -4012,12 +4508,12 @@ class ChromePDFDownloader:
             return False
 
         except Exception as e:
-            print(f"⚠ Eroare la detectarea CAPTCHA: {e}")
+            print(f" Eroare la detectarea CAPTCHA: {e}")
             return False
 
     def detect_403_maintenance(self):
         """
-        🔧 Detectează mentenanța Arcanum (403 Forbidden)
+         Detectează mentenanța Arcanum (403 Forbidden)
 
         Când apare 403, înseamnă că Arcanum face mentenanță ~10 minute
         Scriptul va aștepta automat și va reîncerca
@@ -4033,7 +4529,7 @@ class ChromePDFDownloader:
                 page_title = self.driver.title.strip().lower()
                 # Titlul trebuie să fie EXACT sau să înceapă cu 403
                 if page_title in ["403 forbidden", "403", "forbidden"] or page_title.startswith("403"):
-                    print(f"⚠️ DETECTAT: 403 Forbidden în titlu: '{self.driver.title}'")
+                    print(f" DETECTAT: 403 Forbidden în titlu: '{self.driver.title}'")
                     return True
             except Exception:
                 pass
@@ -4049,12 +4545,12 @@ class ChromePDFDownloader:
                     body_lower = body_text.lower()
                     if ("403 forbidden" in body_lower and
                         ("nginx" in body_lower or "apache" in body_lower or len(body_text) < 100)):
-                        print(f"⚠️ DETECTAT: Pagină de eroare 403 (server)")
+                        print(f" DETECTAT: Pagină de eroare 403 (server)")
                         return True
 
                     # Verifică dacă body-ul e aproape DOAR "403 Forbidden"
                     if body_text.strip() in ["403 Forbidden", "403", "Forbidden", "Access Denied"]:
-                        print(f"⚠️ DETECTAT: Pagină de eroare 403 simplă")
+                        print(f" DETECTAT: Pagină de eroare 403 simplă")
                         return True
             except Exception:
                 pass
@@ -4066,7 +4562,7 @@ class ChromePDFDownloader:
                     h1_text = h1.text.strip().lower()
                     # Verifică EXACT match pentru erori 403
                     if h1_text in ["403 forbidden", "403", "forbidden", "access denied"]:
-                        print(f"⚠️ DETECTAT: 403 Forbidden în header H1")
+                        print(f" DETECTAT: 403 Forbidden în header H1")
                         return True
             except Exception:
                 pass
@@ -4074,12 +4570,12 @@ class ChromePDFDownloader:
             return False
 
         except Exception as e:
-            print(f"⚠ Eroare la detectarea 403: {e}")
+            print(f" Eroare la detectarea 403: {e}")
             return False
 
     def wait_for_maintenance(self, wait_minutes=10, max_retries=3):
         """
-        🔧 Așteaptă finalul mentenanței Arcanum și reîncearcă
+         Așteaptă finalul mentenanței Arcanum și reîncearcă
 
         Args:
             wait_minutes: Minute de așteptat între încercări (default: 10)
@@ -4088,15 +4584,15 @@ class ChromePDFDownloader:
         Returns: True dacă site-ul revine online, False dacă depășește max_retries
         """
         print(f"\n{'='*60}")
-        print(f"🔧 MENTENANȚĂ ARCANUM DETECTATĂ (403 Forbidden)")
+        print(f" MENTENANȚĂ ARCANUM DETECTATĂ (403 Forbidden)")
         print(f"{'='*60}")
-        print(f"⚠️  Site-ul Arcanum este în mentenanță")
-        print(f"⏳ Aștept {wait_minutes} minute și reîncerc automat")
-        print(f"📊 Reîncercări rămase: {max_retries}")
+        print(f"  Site-ul Arcanum este în mentenanță")
+        print(f"Aștept {wait_minutes} minute și reîncerc automat")
+        print(f" Reîncercări rămase: {max_retries}")
 
         for retry in range(1, max_retries + 1):
-            print(f"\n🔄 ÎNCERCARE {retry}/{max_retries}")
-            print(f"⏳ Aștept {wait_minutes} minute pentru finalizarea mentenanței...")
+            print(f"\n ÎNCERCARE {retry}/{max_retries}")
+            print(f"Aștept {wait_minutes} minute pentru finalizarea mentenanței...")
 
             # Așteptare cu afișare progress
             wait_seconds = wait_minutes * 60
@@ -4104,46 +4600,46 @@ class ChromePDFDownloader:
 
             for elapsed in range(0, wait_seconds, interval):
                 remaining = wait_seconds - elapsed
-                print(f"   ⏱️  Aștept: {remaining // 60} minute rămase...")
+                print(f"   Aștept: {remaining // 60} minute rămase...")
                 time.sleep(min(interval, remaining))
 
-            print(f"✅ Așteptare finalizată - încerc refresh...")
+            print(f" Așteptare finalizată - încerc refresh...")
 
             # Dă refresh la pagină
             try:
-                print(f"🔄 Dau refresh la pagină...")
+                print(f" Dau refresh la pagină...")
                 self.driver.refresh()
                 time.sleep(3)  # Așteaptă încărcarea
 
                 # Verifică dacă 403 a dispărut
                 if not self.detect_403_maintenance():
                     print(f"\n{'='*60}")
-                    print(f"✅ MENTENANȚA S-A TERMINAT!")
+                    print(f" MENTENANȚA S-A TERMINAT!")
                     print(f"{'='*60}")
-                    print(f"✅ Site-ul Arcanum este din nou online")
-                    print(f"🔄 Reiau descărcarea de unde am rămas...")
+                    print(f" Site-ul Arcanum este din nou online")
+                    print(f" Reiau descărcarea de unde am rămas...")
                     return True
                 else:
-                    print(f"❌ Încă 403 - mentenanța continuă...")
+                    print(f" Încă 403 - mentenanța continuă...")
                     if retry < max_retries:
-                        print(f"🔄 Mai încerc încă {max_retries - retry} ori...")
+                        print(f" Mai încerc încă {max_retries - retry} ori...")
 
             except Exception as e:
-                print(f"⚠ Eroare la refresh: {e}")
+                print(f" Eroare la refresh: {e}")
 
         # Depășit numărul maxim de reîncercări
         print(f"\n{'='*60}")
-        print(f"❌ MENTENANȚA DEPĂȘEȘTE TIMPUL AȘTEPTAT")
+        print(f" MENTENANȚA DEPĂȘEȘTE TIMPUL AȘTEPTAT")
         print(f"{'='*60}")
-        print(f"❌ Am așteptat {wait_minutes * max_retries} minute total")
-        print(f"❌ Site-ul încă returnează 403 Forbidden")
-        print(f"💾 Salvez progresul și opresc scriptul COMPLET")
-        print(f"🔄 Repornește scriptul mai târziu când mentenanța se termină")
+        print(f" Am așteptat {wait_minutes * max_retries} minute total")
+        print(f" Site-ul încă returnează 403 Forbidden")
+        print(f" Salvez progresul și opresc scriptul COMPLET")
+        print(f" Repornește scriptul mai târziu când mentenanța se termină")
 
-        # 🛑 SETEAZĂ FLAG PENTRU OPRIRE COMPLETĂ A SCRIPTULUI
+        #  SETEAZĂ FLAG PENTRU OPRIRE COMPLETĂ A SCRIPTULUI
         self.state["maintenance_stop"] = True
         self._save_state()
-        print(f"🛑 FLAG MAINTENANCE_STOP SETAT - Scriptul se va opri complet!")
+        print(f" FLAG MAINTENANCE_STOP SETAT - Scriptul se va opri complet!")
 
         return False
 
@@ -4153,9 +4649,10 @@ class ChromePDFDownloader:
         EXCLUDERE EXPLICITĂ pentru about:blank și alte file normale de browser
         """
         try:
+            self.last_driver_dead_error = ""
             current_handles = set(self.driver.window_handles)
 
-            print(f"🔍 Verific {len(current_handles)} file deschise pentru limita zilnică...")
+            print(f" Verific {len(current_handles)} file deschise pentru limita zilnică...")
 
             # Verifică toate filele deschise pentru mesajul de limită
             for handle in current_handles:
@@ -4171,7 +4668,7 @@ class ChromePDFDownloader:
                         current_url.startswith("chrome-extension://") or
                         current_url.startswith("data:") or
                         not current_url or current_url.strip() == ""):
-                        print(f"✅ Skip filă normală de browser: {current_url}")
+                        print(f" Skip filă normală de browser: {current_url}")
                         continue
 
                     # Obține textul complet al paginii
@@ -4240,49 +4737,51 @@ class ChromePDFDownloader:
                     # DEBUGGING: Afișează conținutul suspicios
                     if (self._is_suspicious_page(body_text, current_url, page_source)):
                         html_structure_ok = self._has_normal_html_structure(page_source)
-                        print(f"🔍 FILĂ SUSPICIOASĂ {handle}:")
-                        print(f"   📄 URL: {current_url}")
-                        print(f"   📝 Conținut ({len(body_text)} chars): '{body_text[:200]}{'...' if len(body_text) > 200 else ''}'")
-                        print(f"   🏗️ Structură HTML normală: {html_structure_ok}")
-                        print(f"   🎯 Detectat limit: {limit_detected} ({detection_reason})")
+                        print(f" FILĂ SUSPICIOASĂ {handle}:")
+                        print(f"    URL: {current_url}")
+                        print(f"    Conținut ({len(body_text)} chars): '{body_text[:200]}{'...' if len(body_text) > 200 else ''}'")
+                        print(f"    Structură HTML normală: {html_structure_ok}")
+                        print(f"    Detectat limit: {limit_detected} ({detection_reason})")
 
                     # ACȚIUNE: Dacă limita a fost detectată
                     if limit_detected:
-                        print(f"🛑 LIMITĂ ZILNICĂ DETECTATĂ în filă: {handle}")
-                        print(f"🔍 MOTIV: {detection_reason}")
-                        print(f"📄 URL complet: {current_url}")
-                        print(f"📝 Conținut complet filă:")
+                        print(f" LIMITĂ ZILNICĂ DETECTATĂ în filă: {handle}")
+                        print(f" MOTIV: {detection_reason}")
+                        print(f" URL complet: {current_url}")
+                        print(f" Conținut complet filă:")
                         print(f"   '{body_text}'")
-                        print(f"🏗️ Structură HTML: {self._has_normal_html_structure(page_source)}")
+                        print(f" Structură HTML: {self._has_normal_html_structure(page_source)}")
 
                         # Închide fila cu limita (dar doar dacă nu e singura filă)
                         if len(current_handles) > 1:
-                            print(f"🗙 Închid fila cu limita: {handle}")
+                            print(f" Închid fila cu limita: {handle}")
                             self.driver.close()
 
                             # Revine la prima filă disponibilă
                             if self.driver.window_handles:
                                 self.driver.switch_to.window(self.driver.window_handles[0])
-                                print(f"↩️ Revin la fila principală")
+                                print(f"Revin la fila principală")
                         else:
-                            print(f"⚠ Nu închid fila - este singura rămasă")
+                            print(f" Nu închid fila - este singura rămasă")
 
                         # Setează flag-ul și oprește procesarea
                         self.state["daily_limit_hit"] = True
                         self._save_state()
-                        print(f"🛑 Flag daily_limit_hit setat în state.json")
+                        print(f" Flag daily_limit_hit setat în state.json")
 
                         return True
 
                 except Exception as e:
-                    print(f"⚠ Eroare la verificarea filei {handle}: {e}")
+                    print(f" Eroare la verificarea filei {handle}: {e}")
                     continue
 
-            print(f"✅ Nu am detectat limita zilnică în {len(current_handles)} file")
+            print(f" Nu am detectat limita zilnică în {len(current_handles)} file")
             return False
 
         except Exception as e:
-            print(f"❌ Eroare fatală în verificarea popup-ului de limită: {e}")
+            print(f" Eroare fatală în verificarea popup-ului de limită: {e}")
+            if self._is_dead_driver_error(e):
+                self.last_driver_dead_error = str(e)
             import traceback
             traceback.print_exc()
             return False
@@ -4311,10 +4810,10 @@ class ChromePDFDownloader:
                 "document-lock",
             ]
             if any(marker in text for marker in markers):
-                print("🚫 DETECTAT: Arcanum spune ca acest cont este utilizat de pe alt dispozitiv.")
+                print(" DETECTAT: Arcanum spune ca acest cont este utilizat de pe alt dispozitiv.")
                 return True
         except Exception as e:
-            print(f"⚠ Eroare la detectarea mesajului account-in-use: {e}")
+            print(f" Eroare la detectarea mesajului account-in-use: {e}")
         return False
 
     def recover_from_account_in_use(self, wait_seconds=None):
@@ -4323,55 +4822,55 @@ class ChromePDFDownloader:
         self.account_in_use_recoveries += 1
 
         print("\n" + "=" * 60)
-        print("🚫 ACCOUNT-IN-USE: download fals blocat de Arcanum")
+        print(" ACCOUNT-IN-USE: download fals blocat de Arcanum")
         print("=" * 60)
-        print("🛡️ Nu marchez segmentul ca descarcat si nu actualizez progresul ca succes.")
+        print(" Nu marchez segmentul ca descarcat si nu actualizez progresul ca succes.")
 
         if self.account_in_use_recoveries > self.account_in_use_max_recoveries:
-            print("🧊 Prea multe blocaje account-in-use apropiate.")
-            print(f"⏳ Nu opresc scriptul; fac pauza de {self.account_in_use_long_wait_seconds} secunde.")
-            print("🛡️ Nu fac loginuri repetate agresiv.")
+            print(" Prea multe blocaje account-in-use apropiate.")
+            print(f"Nu opresc scriptul; fac pauza de {self.account_in_use_long_wait_seconds} secunde.")
+            print(" Nu fac loginuri repetate agresiv.")
             time.sleep(self.account_in_use_long_wait_seconds)
             self.account_in_use_recoveries = 1
 
-        print(f"🔄 Recovery {self.account_in_use_recoveries}/{self.account_in_use_max_recoveries}: astept si reincarc documentul.")
+        print(f" Recovery {self.account_in_use_recoveries}/{self.account_in_use_max_recoveries}: astept si reincarc documentul.")
 
-        print(f"⏳ Astept {wait_seconds} secunde ca blocajul viewer-ului Arcanum sa se elibereze...")
+        print(f"Astept {wait_seconds} secunde ca blocajul viewer-ului Arcanum sa se elibereze...")
         time.sleep(wait_seconds)
 
         try:
             if hasattr(self, 'driver') and self.driver:
                 if self.current_issue_url:
-                    print(f"🔄 Reincarc acelasi document fara relogare: {self.current_issue_url}")
+                    print(f" Reincarc acelasi document fara relogare: {self.current_issue_url}")
                     self.driver.get(self.current_issue_url)
                 else:
-                    print("🔄 Dau refresh fara relogare.")
+                    print(" Dau refresh fara relogare.")
                     self.driver.refresh()
                 time.sleep(5)
 
                 if not self.detect_account_in_use():
-                    print("✅ Account-in-use a disparut dupa asteptare/refresh, fara login nou.")
+                    print(" Account-in-use a disparut dupa asteptare/refresh, fara login nou.")
                     return True
         except Exception as e:
-            print(f"⚠ Recovery soft esuat: {e}")
+            print(f" Recovery soft esuat: {e}")
 
-        print("🔄 Blocajul persista; repornesc Firefox-ul de automatizare.")
+        print(" Blocajul persista; repornesc Firefox-ul de automatizare.")
 
         try:
             if hasattr(self, 'driver') and self.driver:
                 self.driver.quit()
         except Exception as e:
-            print(f"⚠ Nu am putut inchide Firefox-ul curent: {e}")
+            print(f" Nu am putut inchide Firefox-ul curent: {e}")
         self.driver = None
         self.wait = None
 
         if not self.setup_chrome_driver(browser="firefox"):
-            print("❌ Nu am putut reporni Firefox dupa account-in-use.")
+            print(" Nu am putut reporni Firefox dupa account-in-use.")
             return False
 
         if self.current_issue_url:
             if not self.navigate_to_page(self.current_issue_url):
-                print(f"❌ Nu pot renaviga la {self.current_issue_url} dupa restart.")
+                print(f" Nu pot renaviga la {self.current_issue_url} dupa restart.")
                 return False
             time.sleep(3)
 
@@ -4380,24 +4879,24 @@ class ChromePDFDownloader:
             elapsed = now_ts - self.last_auto_login_at
             if self.last_auto_login_at and elapsed < self.auto_login_min_interval:
                 remaining = int(self.auto_login_min_interval - elapsed)
-                print(f"🧊 Login automat in cooldown ({remaining}s ramase). Astept, nu opresc scriptul.")
+                print(f" Login automat in cooldown ({remaining}s ramase). Astept, nu opresc scriptul.")
                 time.sleep(remaining)
                 now_ts = time.time()
 
-            print("🔐 Dupa restart este necesar login; incerc login automat o singura data.")
+            print(" Dupa restart este necesar login; incerc login automat o singura data.")
             self.last_auto_login_at = now_ts
             if not self.perform_auto_login():
-                print("❌ Login automat esuat dupa account-in-use.")
+                print(" Login automat esuat dupa account-in-use.")
                 return False
             if self.current_issue_url:
                 self.navigate_to_page(self.current_issue_url)
                 time.sleep(3)
 
         if self.detect_account_in_use():
-            print("❌ Mesajul account-in-use inca apare dupa restart/relogare.")
+            print(" Mesajul account-in-use inca apare dupa restart/relogare.")
             return False
 
-        print("✅ Account-in-use nu mai apare dupa restart/relogare.")
+        print(" Account-in-use nu mai apare dupa restart/relogare.")
         return True
 
     def detect_login_required(self):
@@ -4409,23 +4908,23 @@ class ChromePDFDownloader:
 
             # Verifică dacă există mesajul de login required
             if "Accesarea documentelor necesită abonament" in body_text or "Accesarea documentelor necesită abonament" in page_source:
-                print("🔐 Detectat: Este necesară autentificarea (mesaj)")
+                print(" Detectat: Este necesară autentificarea (mesaj)")
                 return True
 
             # Verifică și prin URL
             if "/accounts/login/" in current_url:
-                print("🔐 Detectat: Pagină de login (URL)")
+                print(" Detectat: Pagină de login (URL)")
                 return True
 
             login_marker, subscribe_marker = self.detect_logged_out_nav_markers(page_source)
             if login_marker and subscribe_marker:
-                print("🔐 Detectat: linkurile Conectare + Abonare in pagina - sesiunea NU este logata")
+                print(" Detectat: linkurile Conectare + Abonare in pagina - sesiunea NU este logata")
                 return True
             if login_marker:
-                print("🔐 Detectat: link Conectare in pagina - sesiunea NU este logata")
+                print(" Detectat: link Conectare in pagina - sesiunea NU este logata")
                 return True
             if subscribe_marker:
-                print("🔐 Detectat: link Abonare in pagina - sesiunea NU este logata")
+                print(" Detectat: link Abonare in pagina - sesiunea NU este logata")
                 return True
 
             # Verifică dacă există input-urile de login în pagină (cazul când apare pagina de login în timpul download-ului)
@@ -4449,7 +4948,7 @@ class ChromePDFDownloader:
 
                 # Dacă toate cele trei elemente sunt prezente, înseamnă că suntem pe pagina de login
                 if username_input and password_input and submit_button:
-                    print("🔐 Detectat: Pagină de login (input-uri de autentificare)")
+                    print(" Detectat: Pagină de login (input-uri de autentificare)")
                     return True
 
             except Exception:
@@ -4459,21 +4958,21 @@ class ChromePDFDownloader:
             if ('id="id_username"' in page_source or 'name="username"' in page_source) and \
                ('id="id_password"' in page_source or 'name="password"' in page_source) and \
                ('value="Conectare"' in page_source or 'Conectare' in page_source):
-                print("🔐 Detectat: Pagină de login (detectată în page_source)")
+                print(" Detectat: Pagină de login (detectată în page_source)")
                 return True
 
             if "href=\"/ro/accounts/login/" in page_source and ">Conectare<" in page_source:
-                print("🔐 Detectat: link HTML Conectare in page_source - sesiunea nu este logata")
+                print(" Detectat: link HTML Conectare in page_source - sesiunea nu este logata")
                 return True
 
             if "href=\"/ro/plans-and-pricing/" in page_source and ">Abonare<" in page_source:
-                print("🔐 Detectat: link HTML Abonare in page_source - sesiunea nu este logata")
+                print(" Detectat: link HTML Abonare in page_source - sesiunea nu este logata")
                 return True
 
             return False
 
         except Exception as e:
-            print(f"⚠ Eroare la detectarea login page: {e}")
+            print(f" Eroare la detectarea login page: {e}")
             return False
 
     def detect_logged_out_nav_markers(self, page_source=None):
@@ -4521,7 +5020,7 @@ class ChromePDFDownloader:
 
     def handle_windows_auth_popup(self):
         """
-        🔐 Gestionează pop-up-ul de autentificare Windows/Chrome
+         Gestionează pop-up-ul de autentificare Windows/Chrome
 
         Uneori Chrome cere autentificare Windows înainte de login.
         Avem 2 opțiuni:
@@ -4531,7 +5030,7 @@ class ChromePDFDownloader:
         Returns: True dacă a reușit, False altfel
         """
         try:
-            print("\n🔍 Verific dacă apare pop-up Windows de autentificare...")
+            print("\n Verific dacă apare pop-up Windows de autentificare...")
             time.sleep(5)  # Așteaptă 2 secunde să apară eventualul pop-up
 
             # Încercăm să importăm pyautogui pentru interacțiunea cu Windows
@@ -4539,21 +5038,21 @@ class ChromePDFDownloader:
                 import pyautogui
 
                 # OPȚIUNEA 1: Încearcă să închidă pop-up-ul cu ESC
-                print("🔄 OPȚIUNEA 1: Încerc să închid pop-up-ul Windows cu ESC...")
+                print(" OPȚIUNEA 1: Încerc să închid pop-up-ul Windows cu ESC...")
                 pyautogui.press('esc')
                 time.sleep(1)
 
                 # Verifică dacă pagina s-a încărcat normal
                 try:
                     self.driver.find_element(By.TAG_NAME, "body")
-                    print("✅ Pop-up închis cu succes - pagina accesibilă!")
+                    print(" Pop-up închis cu succes - pagina accesibilă!")
                     return True
                 except:
                     pass
 
                 # OPȚIUNEA 2: Dacă ESC nu a funcționat, completează parola Windows
-                print("🔄 OPȚIUNEA 2: Completez parola Windows...")
-                print("⚠️  Dacă apare pop-up de autentificare Windows, completez automat...")
+                print(" OPȚIUNEA 2: Completez parola Windows...")
+                print("  Dacă apare pop-up de autentificare Windows, completez automat...")
 
                 # Așteaptă puțin
                 time.sleep(1)
@@ -4571,30 +5070,30 @@ class ChromePDFDownloader:
                     pyautogui.press('enter')
                 time.sleep(2)
 
-                print("✅ Parolă Windows introdusă și confirmată")
+                print(" Parolă Windows introdusă și confirmată")
                 return True
 
             except ImportError:
-                print("⚠️  pyautogui nu este instalat - nu pot gestiona pop-up Windows automat")
-                print("📋 Instalează cu: pip install pyautogui")
-                print("⚠️  Dacă apare pop-up Windows real, închide-l manual.")
+                print("  pyautogui nu este instalat - nu pot gestiona pop-up Windows automat")
+                print(" Instalează cu: pip install pyautogui")
+                print("  Dacă apare pop-up Windows real, închide-l manual.")
                 time.sleep(3)  # Dă timp utilizatorului să intervină manual
                 return True
 
         except Exception as e:
-            print(f"⚠️  Eroare la gestionarea pop-up Windows: {e}")
-            print("🔄 Continui oricum cu login-ul normal...")
+            print(f"  Eroare la gestionarea pop-up Windows: {e}")
+            print(" Continui oricum cu login-ul normal...")
             return True
 
     def perform_auto_login(self):
         """Efectuează login automat când este detectată pagina de autentificare"""
         try:
             print("\n" + "="*60)
-            print("🔐 ÎNCEPUT LOGIN AUTOMAT")
+            print(" ÎNCEPUT LOGIN AUTOMAT")
             print("="*60)
 
             # PASUL 0: Gestionează pop-up-ul Windows de autentificare (dacă apare)
-            print("\n🔐 PASUL 0: Verific pop-up Windows de autentificare...")
+            print("\n PASUL 0: Verific pop-up Windows de autentificare...")
             self.handle_windows_auth_popup()
 
             current_url = self.driver.current_url
@@ -4602,9 +5101,9 @@ class ChromePDFDownloader:
 
             login_marker, subscribe_marker = self.detect_logged_out_nav_markers(page_source)
             if "/accounts/login/" not in current_url and (login_marker or subscribe_marker):
-                print("🔐 Header delogat detectat (Conectare/Abonare). Merg la loginul standard.")
+                print(" Header delogat detectat (Conectare/Abonare). Merg la loginul standard.")
                 self.driver.get("https://adt.arcanum.com/ro/accounts/login/?next=/ro/")
-                print("✅ Navigat la pagina standard de login")
+                print(" Navigat la pagina standard de login")
                 time.sleep(2)
                 current_url = self.driver.current_url
                 page_source = self.driver.page_source
@@ -4622,19 +5121,19 @@ class ChromePDFDownloader:
                             break
 
                     if login_url:
-                        print(f"✅ Folosesc linkul Conectare gasit in pagina: {login_url}")
+                        print(f" Folosesc linkul Conectare gasit in pagina: {login_url}")
                         self.driver.get(login_url)
-                        print("✅ Navigat la pagina de login din linkul paginii")
+                        print(" Navigat la pagina de login din linkul paginii")
                         time.sleep(2)
                         current_url = self.driver.current_url
                         page_source = self.driver.page_source
                 except Exception as e:
-                    print(f"⚠ Nu am putut folosi linkul Conectare din pagina: {e}")
+                    print(f" Nu am putut folosi linkul Conectare din pagina: {e}")
 
             # PASUL 1: Dacă suntem pe pagina cu mesaj, găsește linkul "Conectare" SAU navighează direct
             if "Accesarea documentelor necesită abonament" in page_source:
-                print("📄 Detectat mesaj: 'Accesarea documentelor necesită abonament'")
-                print("🔍 Caut linkul 'Conectare' sau navighez direct la pagina de login...")
+                print(" Detectat mesaj: 'Accesarea documentelor necesită abonament'")
+                print(" Caut linkul 'Conectare' sau navighez direct la pagina de login...")
 
                 try:
                     # Extrage linkul din regex
@@ -4647,26 +5146,26 @@ class ChromePDFDownloader:
                         from html import unescape
                         login_path = unescape(login_path)
                         login_url = f"https://adt.arcanum.com{login_path}"
-                        print(f"✅ Găsit link de conectare: {login_url}")
+                        print(f" Găsit link de conectare: {login_url}")
                     else:
                         # Fallback: caută elementul direct
                         try:
                             login_link = self.driver.find_element(By.XPATH,
                                 "//a[contains(text(), 'Conectare') and contains(@href, '/accounts/login/')]")
                             login_url = login_link.get_attribute("href")
-                            print(f"✅ Găsit link prin XPath: {login_url}")
+                            print(f" Găsit link prin XPath: {login_url}")
                         except:
                             # Dacă nu găsește linkul, folosește URL-ul standard
                             login_url = "https://adt.arcanum.com/ro/accounts/login/?next=/ro/"
-                            print(f"⚠ Nu am găsit link specific, folosesc URL standard: {login_url}")
+                            print(f" Nu am găsit link specific, folosesc URL standard: {login_url}")
 
                     # Navighează la pagina de login
                     self.driver.get(login_url)
-                    print("✅ Navigat la pagina de login")
+                    print(" Navigat la pagina de login")
                     time.sleep(2)
 
                 except Exception as e:
-                    print(f"⚠ Eroare la găsirea linkului, încerc navigare directă: {e}")
+                    print(f" Eroare la găsirea linkului, încerc navigare directă: {e}")
                     self.driver.get("https://adt.arcanum.com/ro/accounts/login/?next=/ro/")
                     time.sleep(2)
 
@@ -4680,20 +5179,20 @@ class ChromePDFDownloader:
                               ('id="id_password"' in page_source or 'name="password"' in page_source)
 
             if not is_login_page and not has_login_inputs:
-                print(f"❌ Nu sunt pe pagina de login! URL curent: {current_url}")
-                print("🔄 Navighez explicit la pagina de login...")
+                print(f" Nu sunt pe pagina de login! URL curent: {current_url}")
+                print(" Navighez explicit la pagina de login...")
                 self.driver.get("https://adt.arcanum.com/ro/accounts/login/?next=/ro/")
                 time.sleep(2)
                 current_url = self.driver.current_url
 
-            print(f"✅ Sunt pe pagina de login: {current_url}")
+            print(f" Sunt pe pagina de login: {current_url}")
 
             # PASUL 3: AȘTEAPTĂ 5 SECUNDE pentru autocomplete
-            print("⏳ Aștept 5 secunde pentru încărcarea automată a datelor salvate...")
+            print("Aștept 5 secunde pentru încărcarea automată a datelor salvate...")
             time.sleep(5)
 
             # PASUL 4: Găsește și completează câmpurile
-            print("🔍 Caut câmpurile de autentificare...")
+            print(" Caut câmpurile de autentificare...")
 
             try:
                 username_field = self.wait.until(
@@ -4701,45 +5200,45 @@ class ChromePDFDownloader:
                 )
                 password_field = self.driver.find_element(By.ID, "id_password")
 
-                print("✅ Găsite câmpurile de login")
+                print(" Găsite câmpurile de login")
 
                 # Verifică dacă sunt populate automat
                 current_username = username_field.get_attribute("value")
                 current_password = password_field.get_attribute("value")
 
                 if current_username and current_password:
-                    print(f"✅ Câmpurile sunt deja populate automat!")
+                    print(f" Câmpurile sunt deja populate automat!")
                     print(f"   Username: {current_username}")
                     print(f"   Parolă: {'*' * len(current_password)} ({len(current_password)} caractere)")
                 else:
-                    print("📝 Completez manual credențialele...")
+                    print(" Completez manual credențialele...")
 
                     if not current_username:
                         username_field.clear()
-                        username_field.send_keys("YOUR-MAIL@gmail.com")
-                        print("✅ Username completat")
+                        username_field.send_keys("YOUR-EMAIL@gmail.com")
+                        print(" Username completat")
 
                     if not current_password:
                         password_field.clear()
-                        password_field.send_keys("YOUR-PASS")
-                        print("✅ Parolă completată")
+                        password_field.send_keys("YOUR-PASSWORD")
+                        print(" Parolă completată")
 
                 # PASUL 5: Așteaptă puțin și apoi submit
                 time.sleep(1)
 
-                print("🔍 Caut butonul de 'Conectare'...")
+                print(" Caut butonul de 'Conectare'...")
                 submit_button = self.driver.find_element(
                     By.CSS_SELECTOR,
                     "input.btn.btn-primary[type='submit'][value='Conectare']"
                 )
 
-                print("✅ Găsit butonul de Conectare")
-                print("🔐 Trimit formularul de login...")
+                print(" Găsit butonul de Conectare")
+                print(" Trimit formularul de login...")
 
                 submit_button.click()
 
                 # PASUL 6: Așteaptă finalizarea login-ului
-                print("⏳ Aștept finalizarea login-ului (10 secunde conform cerințelor)...")
+                print("Aștept finalizarea login-ului (10 secunde conform cerințelor)...")
                 time.sleep(10)
 
                 # PASUL 7: Verifică succesul login-ului
@@ -4747,9 +5246,9 @@ class ChromePDFDownloader:
 
                 if "/accounts/login/" not in final_url:
                     print("="*60)
-                    print("✅ LOGIN REUȘIT!")
-                    print(f"🔗 Redirecționat către: {final_url}")
-                    print("⏳ Aștept 10 secunde înainte de a reia download-ul...")
+                    print(" LOGIN REUȘIT!")
+                    print(f" Redirecționat către: {final_url}")
+                    print("Aștept 10 secunde înainte de a reia download-ul...")
                     time.sleep(10)
                     print("="*60 + "\n")
                     return True
@@ -4757,18 +5256,18 @@ class ChromePDFDownloader:
                     # Verifică mesaje de eroare
                     body_text = self.driver.find_element(By.TAG_NAME, "body").text
                     print("="*60)
-                    print("❌ LOGIN EȘUAT - Încă pe pagina de login")
+                    print(" LOGIN EȘUAT - Încă pe pagina de login")
 
                     if "utilizator" in body_text.lower() or "password" in body_text.lower() or "parolă" in body_text.lower():
-                        print("⚠ Posibil mesaj de eroare în pagină")
-                        print(f"📄 Fragment din pagină: {body_text[:200]}")
+                        print(" Posibil mesaj de eroare în pagină")
+                        print(f" Fragment din pagină: {body_text[:200]}")
 
                     print("="*60 + "\n")
                     return False
 
             except Exception as e:
                 print("="*60)
-                print(f"❌ Eroare la completarea formularului: {e}")
+                print(f" Eroare la completarea formularului: {e}")
                 print("="*60 + "\n")
                 import traceback
                 traceback.print_exc()
@@ -4776,7 +5275,7 @@ class ChromePDFDownloader:
 
         except Exception as e:
             print("="*60)
-            print(f"❌ Eroare generală în perform_auto_login: {e}")
+            print(f" Eroare generală în perform_auto_login: {e}")
             print("="*60 + "\n")
             import traceback
             traceback.print_exc()
@@ -4785,7 +5284,7 @@ class ChromePDFDownloader:
     def close_security_popups(self):
         """Închide automat pop-up-urile de securitate, DAR NU pagina de limită zilnică"""
         try:
-            print("🔍 Verific dacă s-au deschis pop-up-uri de securitate...")
+            print(" Verific dacă s-au deschis pop-up-uri de securitate...")
 
             # Salvează handle-ul ferestrei principale
             main_window = self.driver.current_window_handle
@@ -4815,9 +5314,9 @@ class ChromePDFDownloader:
                             is_daily_limit_url = "conditii-de-utilizare" in current_url
 
                             if is_daily_limit or is_daily_limit_url:
-                                print(f"🛑 DETECTAT PAGINA DE LIMITĂ ZILNICĂ - NU O ÎNCHID!")
-                                print(f"📄 URL: {current_url}")
-                                print(f"📝 Conținut: {page_text[:100]}...")
+                                print(f" DETECTAT PAGINA DE LIMITĂ ZILNICĂ - NU O ÎNCHID!")
+                                print(f" URL: {current_url}")
+                                print(f" Conținut: {page_text[:100]}...")
                                 # NU închide această pagină - lasă scriptul să o detecteze
                                 continue
 
@@ -4835,10 +5334,10 @@ class ChromePDFDownloader:
                             is_security_popup = any(indicator in page_text for indicator in security_indicators)
 
                             if is_security_popup:
-                                print(f"🔒 Detectat pop-up de securitate în fereastra: {window}")
-                                print(f"📄 URL: {current_url}")
+                                print(f" Detectat pop-up de securitate în fereastra: {window}")
+                                print(f" URL: {current_url}")
 
-                                # 🚨 VERIFICARE CRITICĂ: Este CAPTCHA REAL?
+                                #  VERIFICARE CRITICĂ: Este CAPTCHA REAL?
                                 # Detectează 2 tipuri de CAPTCHA:
                                 # Tip 1: "Let's confirm you are human" + butonul "amzn-captcha-verify-button"
                                 # Tip 2: "Human Verification" cu "JavaScript is disabled"
@@ -4879,45 +5378,45 @@ class ChromePDFDownloader:
                                         retry_count = self.captcha_retry_count.get(segment_key, 0)
 
                                         print(f"\n{'='*60}")
-                                        print(f"🚨 CAPTCHA DETECTAT ÎN POP-UP!")
+                                        print(f" CAPTCHA DETECTAT ÎN POP-UP!")
                                         print(f"{'='*60}")
-                                        print(f"📋 URL CAPTCHA: {current_url}")
-                                        print(f"✅ Tip: {captcha_type}")
-                                        print(f"🔢 Detectare #: {retry_count + 1}/{self.captcha_max_retries + 1}")
+                                        print(f" URL CAPTCHA: {current_url}")
+                                        print(f" Tip: {captcha_type}")
+                                        print(f" Detectare #: {retry_count + 1}/{self.captcha_max_retries + 1}")
 
                                         if retry_count < self.captcha_max_retries:
                                             # DETECTARE cu RETRY - Pauză și reîncearcă
-                                            print(f"\n⏸️ DETECTARE CAPTCHA #{retry_count + 1} - PAUZĂ TEMPORARĂ")
-                                            print(f"🔄 Strategie: Aștept {self.captcha_wait_minutes} minute și reîncerc")
-                                            print(f"💡 Motivație: CAPTCHA expiră după ~{self.captcha_wait_minutes} minute")
-                                            print(f"📊 Încercări rămase: {self.captcha_max_retries - retry_count}")
+                                            print(f"\nDETECTARE CAPTCHA #{retry_count + 1} - PAUZĂ TEMPORARĂ")
+                                            print(f" Strategie: Aștept {self.captcha_wait_minutes} minute și reîncerc")
+                                            print(f" Motivație: CAPTCHA expiră după ~{self.captcha_wait_minutes} minute")
+                                            print(f" Încercări rămase: {self.captcha_max_retries - retry_count}")
 
                                             # Marchează retry (incrementează counter-ul)
                                             self.captcha_retry_count[segment_key] = retry_count + 1
 
                                             # Închide fereastra cu CAPTCHA
                                             try:
-                                                print(f"🚪 Închid fereastra cu CAPTCHA...")
+                                                print(f" Închid fereastra cu CAPTCHA...")
                                                 self.driver.close()
                                                 if self.driver.window_handles:
                                                     self.driver.switch_to.window(self.driver.window_handles[0])
-                                                print(f"✅ Fereastră închisă")
+                                                print(f" Fereastră închisă")
                                             except Exception as e:
-                                                print(f"⚠ Eroare la închidere fereastră: {e}")
+                                                print(f" Eroare la închidere fereastră: {e}")
 
                                             # Așteaptă 4 minute
                                             wait_seconds = self.captcha_wait_minutes * 60
-                                            print(f"\n⏳ Aștept {self.captcha_wait_minutes} minute ({wait_seconds} secunde)...")
-                                            print(f"⏰ Timpul curent: {datetime.now().strftime('%H:%M:%S')}")
+                                            print(f"\nAștept {self.captcha_wait_minutes} minute ({wait_seconds} secunde)...")
+                                            print(f"Timpul curent: {datetime.now().strftime('%H:%M:%S')}")
 
                                             for remaining in range(wait_seconds, 0, -30):
                                                 mins = remaining // 60
                                                 secs = remaining % 60
-                                                print(f"⏳ Timp rămas: {mins}m {secs}s...")
+                                                print(f"Timp rămas: {mins}m {secs}s...")
                                                 time.sleep(30)
 
-                                            print(f"⏰ Timpul final: {datetime.now().strftime('%H:%M:%S')}")
-                                            print(f"✅ Așteptare completă! Reîncerc segmentul...")
+                                            print(f"Timpul final: {datetime.now().strftime('%H:%M:%S')}")
+                                            print(f" Așteptare completă! Reîncerc segmentul...")
                                             print(f"{'='*60}\n")
 
                                             # Setează flag pentru retry
@@ -4926,43 +5425,43 @@ class ChromePDFDownloader:
 
                                         else:
                                             # ULTIMA DETECTARE - Oprește definitiv
-                                            print(f"\n🛑 DETECTARE CAPTCHA #{retry_count + 1} - OPRIRE DEFINITIVĂ")
-                                            print(f"⚠️ CAPTCHA persistă după {retry_count} retry-uri")
-                                            print(f"⚠️ Am așteptat {retry_count * self.captcha_wait_minutes} minute total")
-                                            print(f"⚠️ Trebuie intervenție manuală obligatorie!")
+                                            print(f"\n DETECTARE CAPTCHA #{retry_count + 1} - OPRIRE DEFINITIVĂ")
+                                            print(f" CAPTCHA persistă după {retry_count} retry-uri")
+                                            print(f" Am așteptat {retry_count * self.captcha_wait_minutes} minute total")
+                                            print(f" Trebuie intervenție manuală obligatorie!")
 
                                             # Reset counter
                                             self.captcha_retry_count[segment_key] = 0
 
                                             # Salvează starea
-                                            print(f"💾 Salvez progresul...")
+                                            print(f" Salvez progresul...")
                                             self.state["captcha_detected"] = True
                                             self.state["captcha_url"] = current_url
                                             self._save_state()
 
-                                            print(f"\n🛑 SCRIPTUL A FOST OPRIT DEFINITIV")
-                                            print(f"📋 URL CAPTCHA: {current_url}")
-                                            print(f"📋 Progresul salvat în state.json")
-                                            print(f"⚠️ ACȚIUNE NECESARĂ: Rezolvă CAPTCHA manual în browser")
+                                            print(f"\n SCRIPTUL A FOST OPRIT DEFINITIV")
+                                            print(f" URL CAPTCHA: {current_url}")
+                                            print(f" Progresul salvat în state.json")
+                                            print(f" ACȚIUNE NECESARĂ: Rezolvă CAPTCHA manual în browser")
                                             print(f"{'='*60}\n")
-                                            raise SystemExit("🚨 OPRIRE DEFINITIVĂ - CAPTCHA persistent, intervenție manuală necesară!")
+                                            raise SystemExit(" OPRIRE DEFINITIVĂ - CAPTCHA persistent, intervenție manuală necesară!")
                                     elif has_captcha_text and not has_captcha_button:
-                                        print(f"ℹ️ Pop-up cu text similar CAPTCHA dar FĂRĂ butonul CAPTCHA")
-                                        print(f"ℹ️ Probabil pagină de download (check-access-save) - nu e CAPTCHA real")
+                                        print(f"INFO: Pop-up cu text similar CAPTCHA dar FĂRĂ butonul CAPTCHA")
+                                        print(f"INFO: Probabil pagină de download (check-access-save) - nu e CAPTCHA real")
                                 except Exception as e:
-                                    print(f"⚠ Eroare la verificarea conținutului CAPTCHA: {e}")
+                                    print(f" Eroare la verificarea conținutului CAPTCHA: {e}")
 
-                                print("⏳ Aștept 2 secunde apoi îl închid...")
+                                print("Aștept 2 secunde apoi îl închid...")
                                 time.sleep(3)
 
                                 # Închide pop-up-ul normal de securitate (non-CAPTCHA)
                                 self.driver.close()
-                                print("✅ Pop-up de securitate închis automat")
+                                print(" Pop-up de securitate închis automat")
                             else:
-                                print(f"ℹ️ Fereastră nouă detectată dar nu e pop-up de securitate sau e pagină importantă")
+                                print(f"INFO: Fereastră nouă detectată dar nu e pop-up de securitate sau e pagină importantă")
 
                         except Exception as e:
-                            print(f"⚠ Eroare la verificarea ferestrei {window}: {e}")
+                            print(f" Eroare la verificarea ferestrei {window}: {e}")
 
             # Revine la fereastra principală
             try:
@@ -4972,7 +5471,7 @@ class ChromePDFDownloader:
                     self.driver.switch_to.window(self.driver.window_handles[0])
 
         except Exception as e:
-            print(f"⚠ Eroare în close_security_popups: {e}")
+            print(f" Eroare în close_security_popups: {e}")
 
 
     def _has_normal_html_structure(self, page_source):
@@ -5017,27 +5516,27 @@ class ChromePDFDownloader:
         is_too_small = len(normalized_source) < 300
 
         # LOGICA DE DECIZIE:
-        # 1. Dacă are indicatori negativi ȘI e mică → pagină de limită
+        # 1. Dacă are indicatori negativi ȘI e mică -> pagină de limită
         if negative_count > 0 and is_too_small:
-            print(f"🚨 PAGINĂ DE LIMITĂ detectată:")
+            print(f" PAGINĂ DE LIMITĂ detectată:")
             print(f"   Indicatori negativi: {negative_count}")
             print(f"   Dimensiune: {len(normalized_source)} chars")
             print(f"   Conținut: '{normalized_source[:200]}'")
             return False
 
-        # 2. Dacă are suficienți indicatori pozitivi → pagină normală
+        # 2. Dacă are suficienți indicatori pozitivi -> pagină normală
         if positive_count >= 4:  # Cel puțin 4 din 6 indicatori pozitivi
             return True
 
-        # 3. Dacă e foarte mică și fără indicatori pozitivi → suspicioasă
+        # 3. Dacă e foarte mică și fără indicatori pozitivi -> suspicioasă
         if is_too_small and positive_count < 2:
-            print(f"🔍 PAGINĂ SUSPICIOASĂ (prea mică și fără indicatori):")
+            print(f" PAGINĂ SUSPICIOASĂ (prea mică și fără indicatori):")
             print(f"   Indicatori pozitivi: {positive_count}/6")
             print(f"   Dimensiune: {len(normalized_source)} chars")
             print(f"   Conținut: '{normalized_source[:200]}'")
             return False
 
-        # 4. În toate celelalte cazuri → consideră normală
+        # 4. În toate celelalte cazuri -> consideră normală
         return True
 
     def _is_suspicious_page(self, body_text, url, page_source):
@@ -5084,15 +5583,22 @@ class ChromePDFDownloader:
     def save_page_range(self, start, end, retries=1):
         """FIXED: Verifică URL-ul + verifică limita zilnică + verifică login + închide pop-up-urile automat + retry după CAPTCHA"""
         for attempt in range(1, retries + 2):
-            print(f"🔄 Încep segmentul {start}-{end}, încercarea {attempt}")
+            print(f" Încep segmentul {start}-{end}, încercarea {attempt}")
+
+            if self.state.get("download_no_file_stop", False):
+                print(" Oprire de siguranta activa: nu mai apas Save.")
+                return False
+
+            if self._save_attempt_guard_reached(start, end):
+                return False
 
             # Așteaptă ca pagina să fie complet încărcată înainte de a începe (delay pentru securitate site)
             if attempt == 1:
-                print("⏳ Aștept 2 secunde pentru încărcarea completă a paginii înainte de descărcare...")
+                print("Aștept 2 secunde pentru încărcarea completă a paginii înainte de descărcare...")
                 time.sleep(2)
             else:
                 # Pentru retry-uri, așteaptă mai mult
-                print("⏳ Aștept 3 secunde înainte de retry...")
+                print("Aștept 3 secunde înainte de retry...")
                 time.sleep(3)
 
             # VERIFICARE 1: Suntem pe documentul corect?
@@ -5100,35 +5606,35 @@ class ChromePDFDownloader:
                 current_url = self.driver.current_url
                 # Verifică dacă URL-ul e valid (nu e chrome:// sau about:)
                 if current_url.startswith('chrome://') or current_url.startswith('about:'):
-                    print(f"🚨 EROARE: Browser-ul este pe o pagină internă Chrome!")
+                    print(f" EROARE: Browser-ul este pe o pagină internă Chrome!")
                     print(f"   Actual: {current_url}")
-                    print(f"🔄 Renavigez la documentul corect...")
+                    print(f" Renavigez la documentul corect...")
                     if not self.navigate_to_page(self.current_issue_url):
-                        print(f"❌ Nu pot renaviga la {self.current_issue_url}")
+                        print(f" Nu pot renaviga la {self.current_issue_url}")
                         if attempt < retries + 1:
                             continue  # Reîncearcă
                         return False
                     time.sleep(3)
-                    print(f"✅ Renavigat cu succes la documentul corect")
+                    print(f" Renavigat cu succes la documentul corect")
                 elif self.current_issue_url not in current_url:
-                    print(f"🚨 EROARE: Browser-ul a navigat la URL greșit!")
+                    print(f" EROARE: Browser-ul a navigat la URL greșit!")
                     print(f"   Așteptat: {self.current_issue_url}")
                     print(f"   Actual: {current_url}")
-                    print(f"🔄 Renavigez la documentul corect...")
+                    print(f" Renavigez la documentul corect...")
 
                     if not self.navigate_to_page(self.current_issue_url):
-                        print(f"❌ Nu pot renaviga la {self.current_issue_url}")
+                        print(f" Nu pot renaviga la {self.current_issue_url}")
                         if attempt < retries + 1:
                             continue  # Reîncearcă
                         return False
 
-                    time.sleep(3)  # Delay mărit după renavigare
-                    print(f"✅ Renavigat cu succes la documentul corect")
+                    time.sleep(RENAVIGATE_STABILIZE_SECONDS)
+                    print(f" Renavigat cu succes la documentul corect")
             except Exception as e:
-                print(f"⚠ Eroare la verificarea URL-ului: {e}")
+                print(f" Eroare la verificarea URL-ului: {e}")
                 # Încercă renavigare preventivă
                 if attempt < retries + 1:
-                    print("🔄 Încerc renavigare preventivă...")
+                    print(" Încerc renavigare preventivă...")
                     try:
                         if self.navigate_to_page(self.current_issue_url):
                             time.sleep(3)
@@ -5138,65 +5644,65 @@ class ChromePDFDownloader:
 
             # VERIFICARE 2: Este nevoie de login?
             if self.detect_login_required():
-                print("🔐 DETECTAT: Este necesară autentificarea!")
-                print("🔄 Încerc login automat...")
+                print(" DETECTAT: Este necesară autentificarea!")
+                print(" Încerc login automat...")
 
                 login_success = self.perform_auto_login()
 
                 if not login_success:
-                    print("❌ LOGIN EȘUAT - Opresc descărcarea")
-                    print("⏸️ PAUZĂ NECESARĂ - Verifică manual credențialele!")
+                    print(" LOGIN EȘUAT - Opresc descărcarea")
+                    print("PAUZĂ NECESARĂ - Verifică manual credențialele!")
                     return False
 
-                print("✅ Login reușit - aștept 10 secunde înainte de a reia download-ul...")
+                print(" Login reușit - aștept 10 secunde înainte de a reia download-ul...")
                 time.sleep(10)
-                print("🔄 Renavigez la document...")
+                print(" Renavigez la document...")
 
                 # După login, renavigăm la documentul original
                 if not self.navigate_to_page(self.current_issue_url):
-                    print(f"❌ Nu pot renaviga la {self.current_issue_url} după login")
+                    print(f" Nu pot renaviga la {self.current_issue_url} după login")
                     return False
 
                 time.sleep(3)
-                print("✅ Renavigat cu succes după login")
+                print(" Renavigat cu succes după login")
 
             if self.detect_account_in_use():
                 if self.recover_from_account_in_use():
                     continue
                 return False
 
-            # 🔧 VERIFICARE 1: MENTENANȚĂ (403 Forbidden)
+            #  VERIFICARE 1: MENTENANȚĂ (403 Forbidden)
             if self.detect_403_maintenance():
-                print(f"⚠️ Detectat 403 la segmentul {start}-{end} - Arcanum în mentenanță")
+                print(f" Detectat 403 la segmentul {start}-{end} - Arcanum în mentenanță")
 
                 # Așteaptă finalul mentenanței
                 if self.wait_for_maintenance(wait_minutes=10, max_retries=3):
-                    print(f"✅ Mentenanță finalizată - reîncerc segmentul {start}-{end}")
+                    print(f" Mentenanță finalizată - reîncerc segmentul {start}-{end}")
                     # Renavigăm la documentul corect după mentenanță
                     if not self.navigate_to_page(self.current_issue_url):
-                        print(f"❌ Nu pot renaviga după mentenanță")
+                        print(f" Nu pot renaviga după mentenanță")
                         return False
                     time.sleep(3)
                     # Continuă cu încercarea curentă
                 else:
-                    print(f"❌ Mentenanță prea lungă - abandonez segmentul {start}-{end}")
+                    print(f" Mentenanță prea lungă - abandonez segmentul {start}-{end}")
                     return False
 
-            # 🚨 VERIFICARE 2: CAPTCHA
+            #  VERIFICARE 2: CAPTCHA
             if self.detect_captcha():
                 print(f"\n{'='*60}")
-                print(f"🚨🚨🚨 CAPTCHA DETECTAT ÎN TIMPUL DESCĂRCĂRII! 🚨🚨🚨")
+                print(f" CAPTCHA DETECTAT ÎN TIMPUL DESCĂRCĂRII! ")
                 print(f"{'='*60}")
-                print(f"❌ CAPTCHA detectat la segmentul {start}-{end}")
-                print(f"💾 Salvez progresul și opresc scriptul...")
+                print(f" CAPTCHA detectat la segmentul {start}-{end}")
+                print(f" Salvez progresul și opresc scriptul...")
                 self.state["captcha_detected"] = True
                 self.state["captcha_url"] = self.driver.current_url
                 self._save_state()
-                raise SystemExit("🚨 OPRIRE CAPTCHA - Verificare umană necesară!")
+                raise SystemExit(" OPRIRE CAPTCHA - Verificare umană necesară!")
 
             # Continuă cu logica existentă...
             if not self.open_save_popup():
-                print(f"⚠ Eșec la deschiderea popup-ului pentru {start}-{end}")
+                print(f" Eșec la deschiderea popup-ului pentru {start}-{end}")
                 time.sleep(2)
                 continue
 
@@ -5207,55 +5713,68 @@ class ChromePDFDownloader:
 
             success = self.fill_and_save_range(start, end)
             if success:
-                print("⏳ Aștept 4 secunde pentru inițierea descărcării (delay securitate site)...")
-                time.sleep(4)
-
-                # Închide automat pop-up-urile de securitate
+                print(f"Verific maxim {self.save_start_timeout}s dacă apare fișierul pe HDD pentru segmentul {start}-{end}...")
                 self.captcha_retry_needed = False  # Reset flag
                 self.close_security_popups()
 
                 # Verifică dacă trebuie retry după CAPTCHA
                 if self.captcha_retry_needed:
-                    print(f"🔄 CAPTCHA retry flag detectat - reîncerc segmentul {start}-{end}")
+                    print(f" CAPTCHA retry flag detectat - reîncerc segmentul {start}-{end}")
                     continue  # Reîncearcă segmentul
-
-                print("⏳ Aștept 5 secunde pentru finalizarea descărcării segmentului (delay securitate site)...")
-                time.sleep(3)
 
                 # Verifică limita zilnică IMEDIAT DUPĂ descărcare
                 if self.check_for_daily_limit_popup():
-                    print(f"🛑 OPRIRE INSTANT - Limită zilnică detectată după segmentul {start}-{end}")
+                    print(f" OPRIRE INSTANT - Limită zilnică detectată după segmentul {start}-{end}")
                     return False
 
-                file_status, downloaded_segment = self.wait_for_segment_on_disk(start, end, timeout=180)
+                file_status, downloaded_segment = self.wait_for_segment_start_on_disk(
+                    start,
+                    end,
+                    timeout=self.save_start_timeout,
+                )
+                if file_status == "started":
+                    print(f" Segmentul {start}-{end}: fișierul a pornit pe HDD; aștept finalizarea PDF-ului.")
+                    file_status, downloaded_segment = self.wait_for_segment_on_disk(start, end, timeout=180)
+
                 if file_status == "account_in_use":
-                    if self.recover_from_account_in_use():
-                        continue
+                    self._record_save_without_file(start, end, "account_in_use dupa click Save", force_stop=True)
+                    return False
+                if file_status == "login_required":
+                    self._record_save_without_file(start, end, "pagina de login dupa click Save", force_stop=True)
+                    return False
+                if file_status == "driver_dead":
+                    self._record_save_without_file(start, end, "WebDriver mort dupa click Save", force_stop=True)
                     return False
                 if file_status == "daily_limit":
                     return False
                 if file_status != "ok":
-                    print(f"❌ Segmentul {start}-{end} NU este confirmat pe disk; reîncerc.")
-                    continue
+                    self._record_save_without_file(
+                        start,
+                        end,
+                        f"fisier neconfirmat pe HDD in {self.save_start_timeout}s dupa Save ({file_status})",
+                        force_stop=True,
+                    )
+                    return False
 
-                print(f"✅ Segmentul {start}-{end} descărcat cu succes")
+                print(f" Segmentul {start}-{end} descărcat cu succes")
+                self._clear_save_without_file_counter(start, end)
 
                 # Resetează counter-ul CAPTCHA pentru acest segment (dacă exista)
                 segment_key = f"{self.current_issue_url}_current_segment"
                 if segment_key in self.captcha_retry_count:
-                    print(f"✅ Reset counter CAPTCHA pentru segment (era la {self.captcha_retry_count[segment_key]})")
+                    print(f" Reset counter CAPTCHA pentru segment (era la {self.captcha_retry_count[segment_key]})")
                     self.captcha_retry_count[segment_key] = 0
 
                 # VERIFICARE CRITICĂ: Asigură-te că rămânem pe URL-ul corect după descărcare
                 try:
-                    time.sleep(2)  # Așteaptă puțin pentru ca pagina să se stabilizeze
+                    time.sleep(POST_DOWNLOAD_URL_CHECK_DELAY_SECONDS)
                     try:
                         current_url = self.driver.current_url
                     except Exception as url_error:
                         # Eroare "Browsing context has been discarded" - nu crea instanță nouă
                         if "discarded" in str(url_error) or "NoSuchWindow" in str(type(url_error).__name__):
-                            print(f"⚠ Context browser închis - aștept stabilizare...")
-                            time.sleep(3)
+                            print(f" Context browser închis - aștept stabilizare...")
+                            time.sleep(RENAVIGATE_STABILIZE_SECONDS)
                             # Încearcă să recreeze driver-ul fără să pornească Firefox nou
                             try:
                                 if hasattr(self, 'driver') and self.driver:
@@ -5271,55 +5790,55 @@ class ChromePDFDownloader:
                                             continue
 
                                     if firefox_running:
-                                        print("✅ Firefox încă rulează - aștept stabilizare...")
-                                        time.sleep(5)
+                                        print(" Firefox încă rulează - aștept stabilizare...")
+                                        time.sleep(RENAVIGATE_STABILIZE_SECONDS)
                                         # Nu crea instanță nouă - doar așteaptă
                                         return True
                             except:
                                 pass
-                        print(f"⚠ Eroare la verificarea URL-ului după descărcare: {url_error}")
+                        print(f" Eroare la verificarea URL-ului după descărcare: {url_error}")
                         return True  # Continuă oricum
 
                     if self.current_issue_url not in current_url or current_url.startswith('chrome://') or '?pg=' in current_url:
-                        print(f"⚠ URL s-a schimbat după descărcare: {current_url}")
-                        print(f"🔄 Renavigez la URL-ul corect...")
+                        print(f" URL s-a schimbat după descărcare: {current_url}")
+                        print(f" Renavigez la URL-ul corect...")
                         if not self.navigate_to_page(self.current_issue_url):
-                            print(f"❌ Nu pot renaviga după descărcare - va eșua la următorul segment")
+                            print(f" Nu pot renaviga după descărcare - va eșua la următorul segment")
                             # Return True oricum pentru că descărcarea a reușit
                         else:
-                            print(f"✅ Renavigat după descărcare - aștept stabilizare...")
-                            time.sleep(5)  # Delay mărit după renavigare pentru stabilizare completă
+                            print(f" Renavigat după descărcare - aștept stabilizare...")
+                            time.sleep(RENAVIGATE_STABILIZE_SECONDS)
 
                             # Verifică din nou că suntem pe URL-ul corect
                             try:
                                 final_url = self.driver.current_url
                                 if self.current_issue_url not in final_url:
-                                    print(f"⚠ URL încă greșit după renavigare: {final_url}")
-                                    print(f"🔄 Reîncerc renavigarea...")
+                                    print(f" URL încă greșit după renavigare: {final_url}")
+                                    print(f" Reîncerc renavigarea...")
                                     self.navigate_to_page(self.current_issue_url)
-                                    time.sleep(3)
+                                    time.sleep(RENAVIGATE_STABILIZE_SECONDS)
                             except Exception:
                                 # Ignoră eroarea - continuă oricum
                                 pass
                 except Exception as e:
-                    print(f"⚠ Eroare la verificarea URL-ului după descărcare: {e}")
+                    print(f" Eroare la verificarea URL-ului după descărcare: {e}")
 
                 return True
             else:
-                print(f"⚠ Retry pentru segmentul {start}-{end}")
+                print(f" Retry pentru segmentul {start}-{end}")
                 time.sleep(2)
 
-        print(f"❌ Renunț la segmentul {start}-{end} după {retries+1} încercări.")
+        print(f" Renunț la segmentul {start}-{end} după {retries+1} încercări.")
         return False
 
     def save_all_pages_in_batches(self, resume_from=1):
         """FIXED: Refă segmentele incomplete în loc să continue din mijloc"""
         total = self.get_total_pages()
         if total <= 0:
-            print("⚠ Nu am obținut numărul total de pagini; nu pot continua.")
+            print(" Nu am obținut numărul total de pagini; nu pot continua.")
             return 0, False
 
-        print(f"🎯 TOTAL PAGINI DETECTAT: {total}")
+        print(f" TOTAL PAGINI DETECTAT: {total}")
 
         bs = self.batch_size  # 50
 
@@ -5338,7 +5857,7 @@ class ChromePDFDownloader:
             all_segments.append((current, end))
             current += bs
 
-        print(f"📊 SEGMENTE STANDARD CALCULATE: {len(all_segments)}")
+        print(f" SEGMENTE STANDARD CALCULATE: {len(all_segments)}")
         for i, (start, end) in enumerate(all_segments):
             print(f"   {i+1}. Segment {start}-{end}")
 
@@ -5347,7 +5866,7 @@ class ChromePDFDownloader:
 
         for i, (seg_start, seg_end) in enumerate(all_segments):
             # Verifică dacă există un fișier care acoperă COMPLET segmentul
-            segments_on_disk = self.get_all_pdf_segments_for_issue(self.current_issue_url)
+            segments_on_disk = self.get_all_pdf_segments_for_issue_anywhere(self.current_issue_url)
 
             segment_complete = False
             for disk_seg in segments_on_disk:
@@ -5357,7 +5876,7 @@ class ChromePDFDownloader:
                 # Verifică dacă segmentul de pe disk acoperă COMPLET segmentul standard
                 if disk_start <= seg_start and disk_end >= seg_end:
                     segment_complete = True
-                    print(f"✅ Segment {i+1} ({seg_start}-{seg_end}) COMPLET pe disk: {disk_seg['filename']}")
+                    print(f" Segment {i+1} ({seg_start}-{seg_end}) COMPLET pe disk: {disk_seg['filename']}")
                     break
 
             if segment_complete:
@@ -5367,11 +5886,11 @@ class ChromePDFDownloader:
                 partial_files = [seg for seg in segments_on_disk
                                if seg['start'] >= seg_start and seg['end'] <= seg_end]
                 if partial_files:
-                    print(f"⚠ Segment {i+1} ({seg_start}-{seg_end}) PARȚIAL pe disk:")
+                    print(f" Segment {i+1} ({seg_start}-{seg_end}) PARȚIAL pe disk:")
                     for pf in partial_files:
-                        print(f"   📄 {pf['filename']} (pagini {pf['start']}-{pf['end']}) - VA FI REFĂCUT")
+                        print(f"    {pf['filename']} (pagini {pf['start']}-{pf['end']}) - VA FI REFĂCUT")
                 else:
-                    print(f"🆕 Segment {i+1} ({seg_start}-{seg_end}) lipsește complet")
+                    print(f" Segment {i+1} ({seg_start}-{seg_end}) lipsește complet")
 
         # PASUL 3: Începe cu primul segment incomplet
         start_segment_index = 0
@@ -5381,15 +5900,15 @@ class ChromePDFDownloader:
                 break
         else:
             # Toate segmentele sunt complete
-            print("✅ Toate segmentele sunt complete pe disk!")
+            print(" Toate segmentele sunt complete pe disk!")
             return total, False
 
-        print(f"🎯 ÎNCEP cu segmentul {start_segment_index + 1} (primul incomplet)")
+        print(f" ÎNCEP cu segmentul {start_segment_index + 1} (primul incomplet)")
 
         # PASUL 4: Procesează segmentele începând cu primul incomplet
         segments_to_process = all_segments[start_segment_index:]
 
-        print(f"🎯 PROCESEZ {len(segments_to_process)} segmente începând cu segmentul {start_segment_index + 1}")
+        print(f" PROCESEZ {len(segments_to_process)} segmente începând cu segmentul {start_segment_index + 1}")
 
         # PASUL 5: ȘTERGE fișierele parțiale pentru segmentele care vor fi refăcute
         for i, (seg_start, seg_end) in enumerate(segments_to_process):
@@ -5401,13 +5920,13 @@ class ChromePDFDownloader:
                     if disk_seg['start'] >= seg_start and disk_seg['end'] <= seg_end:
                         try:
                             os.remove(disk_seg['path'])
-                            print(f"🗑️ ȘTERG fișier parțial: {disk_seg['filename']}")
+                            print(f" ȘTERG fișier parțial: {disk_seg['filename']}")
                         except Exception as e:
-                            print(f"⚠ Nu am putut șterge {disk_seg['filename']}: {e}")
+                            print(f" Nu am putut șterge {disk_seg['filename']}: {e}")
 
         # PASUL 5.5: RE-SCANEAZĂ disk-ul DUPĂ ștergere pentru a vedea ce există ACUM
-        print(f"\n🔍 RE-SCANEZ disk-ul după ștergerea fișierelor parțiale...")
-        segments_on_disk_now = self.get_all_pdf_segments_for_issue(self.current_issue_url)
+        print(f"\n RE-SCANEZ disk-ul după ștergerea fișierelor parțiale...")
+        segments_on_disk_now = self.get_all_pdf_segments_for_issue_anywhere(self.current_issue_url)
 
         # Re-calculează segmentele complete ACUM (după ștergere)
         completed_segments_now = []
@@ -5420,11 +5939,11 @@ class ChromePDFDownloader:
                 if disk_start <= seg_start and disk_end >= seg_end:
                     segment_complete = True
                     completed_segments_now.append(i)
-                    print(f"✅ Segment {i+1} ({seg_start}-{seg_end}) EXISTĂ ACUM pe disk: {disk_seg['filename']}")
+                    print(f" Segment {i+1} ({seg_start}-{seg_end}) EXISTĂ ACUM pe disk: {disk_seg['filename']}")
                     break
 
             if not segment_complete:
-                print(f"❌ Segment {i+1} ({seg_start}-{seg_end}) LIPSEȘTE - va fi descărcat")
+                print(f" Segment {i+1} ({seg_start}-{seg_end}) LIPSEȘTE - va fi descărcat")
 
         # Re-calculează segments_to_process bazat pe ce există ACUM
         actual_segments_to_download = []
@@ -5433,12 +5952,12 @@ class ChromePDFDownloader:
                 actual_segments_to_download.append(all_segments[i])
 
         if not actual_segments_to_download:
-            print("✅ Toate segmentele sunt complete după re-scanare!")
+            print(" Toate segmentele sunt complete după re-scanare!")
             return total, False
 
-        print(f"\n🎯 După re-scanare: trebuie să descarc {len(actual_segments_to_download)} segmente lipsă")
+        print(f"\n După re-scanare: trebuie să descarc {len(actual_segments_to_download)} segmente lipsă")
         for seg_start, seg_end in actual_segments_to_download[:5]:  # Afișează primele 5
-            print(f"   📥 Segment de descărcat: {seg_start}-{seg_end}")
+            print(f"    Segment de descărcat: {seg_start}-{seg_end}")
         if len(actual_segments_to_download) > 5:
             print(f"   ... și încă {len(actual_segments_to_download) - 5} segmente")
 
@@ -5447,7 +5966,7 @@ class ChromePDFDownloader:
         if completed_segments_now:
             max_completed_index = max(completed_segments_now)
             last_successful_page = all_segments[max_completed_index][1]
-            print(f"📊 Ultimul segment complet: index {max_completed_index}, pagina {last_successful_page}")
+            print(f" Ultimul segment complet: index {max_completed_index}, pagina {last_successful_page}")
 
         # PASUL 6: Descarcă DOAR segmentele care lipsesc ACUM
         failed_segments = []
@@ -5455,7 +5974,8 @@ class ChromePDFDownloader:
         MAX_CONSECUTIVE_FAILURES = 3
 
         for i, (start, end) in enumerate(actual_segments_to_download):
-            print(f"📦 Procesez segmentul LIPSĂ {start}-{end} ({i+1}/{len(actual_segments_to_download)})")
+            segment_started_at = time.time()
+            print(f" Procesez segmentul LIPSĂ {start}-{end} ({i+1}/{len(actual_segments_to_download)})")
 
             # VERIFICARE CRITICĂ: Asigură-te că suntem pe URL-ul corect înainte de fiecare segment
             if i > 0:  # Nu e nevoie pentru primul segment
@@ -5463,13 +5983,13 @@ class ChromePDFDownloader:
                     current_url = self.safe_get_current_url()
                     if current_url is None:
                         # Context browser închis - așteaptă stabilizare fără să creeze instanță nouă
-                        print(f"⚠ Context browser închis înainte de segment {start}-{end} - aștept stabilizare...")
-                        time.sleep(5)
+                        print(f" Context browser închis înainte de segment {start}-{end} - aștept stabilizare...")
+                        time.sleep(RENAVIGATE_STABILIZE_SECONDS)
                         # Încearcă să renavigheze fără să creeze instanță nouă
                         try:
                             if hasattr(self, 'driver') and self.driver:
                                 self.driver.get(self.current_issue_url)
-                                time.sleep(3)
+                                time.sleep(RENAVIGATE_STABILIZE_SECONDS)
                         except:
                             # Dacă nu funcționează, continuă oricum
                             pass
@@ -5480,32 +6000,32 @@ class ChromePDFDownloader:
                         current_url.startswith('chrome://') or
                         '?pg=' in current_url or
                         '/?layout=' in current_url):
-                        print(f"⚠ URL greșit detectat înainte de segment {start}-{end}: {current_url}")
-                        print(f"🔄 Renavigez la URL-ul corect...")
+                        print(f" URL greșit detectat înainte de segment {start}-{end}: {current_url}")
+                        print(f" Renavigez la URL-ul corect...")
                         if not self.navigate_to_page(self.current_issue_url):
-                            print(f"❌ Nu pot renaviga la {self.current_issue_url}")
+                            print(f" Nu pot renaviga la {self.current_issue_url}")
                             failed_segments.append((start, end))
                             consecutive_failures += 1
                             continue
-                        print(f"✅ Renavigat cu succes - aștept stabilizare...")
-                        time.sleep(5)  # Delay mărit după renavigare pentru stabilizare completă
+                        print(f" Renavigat cu succes - aștept stabilizare...")
+                        time.sleep(RENAVIGATE_STABILIZE_SECONDS)
 
                         # Verifică din nou că suntem pe URL-ul corect
                         verify_url = self.safe_get_current_url()
                         if verify_url and self.current_issue_url not in verify_url:
-                            print(f"⚠ URL încă greșit după renavigare: {verify_url}")
-                            print(f"🔄 Reîncerc renavigarea...")
+                            print(f" URL încă greșit după renavigare: {verify_url}")
+                            print(f" Reîncerc renavigarea...")
                             self.navigate_to_page(self.current_issue_url)
-                            time.sleep(3)
+                            time.sleep(RENAVIGATE_STABILIZE_SECONDS)
                 except Exception as e:
-                    print(f"⚠ Eroare la verificarea URL-ului: {e}")
+                    print(f" Eroare la verificarea URL-ului: {e}")
                     # Nu crea instanță nouă - doar așteaptă și continuă
-                    time.sleep(3)
+                    time.sleep(RENAVIGATE_STABILIZE_SECONDS)
                     # Încearcă renavigare preventivă fără să creeze instanță nouă
                     try:
                         if hasattr(self, 'driver') and self.driver:
                             self.driver.get(self.current_issue_url)
-                            time.sleep(3)
+                            time.sleep(RENAVIGATE_STABILIZE_SECONDS)
                     except:
                         pass
 
@@ -5513,14 +6033,17 @@ class ChromePDFDownloader:
             result = self.save_page_range(start, end, retries=3)
 
             if result:
-                # SUCCES: Adaug delay mai mare între segmente pentru stabilizare
-                print(f"✅ Segmentul {start}-{end} descărcat cu succes")
+                print(f" Segmentul {start}-{end} descărcat cu succes")
                 consecutive_failures = 0  # Reset counter la succes
 
-                # Delay critic între segmente pentru ca site-ul să se stabilizeze
                 if i < len(actual_segments_to_download) - 1:  # Nu e ultimul segment
-                    print(f"⏳ Aștept 8 secunde între segmente pentru stabilizare (delay securitate site)...")
-                    time.sleep(8)
+                    elapsed = time.time() - segment_started_at
+                    wait_needed = max(0, TARGET_SEGMENT_INTERVAL_SECONDS - elapsed)
+                    if wait_needed > 0:
+                        print(f"Aștept {wait_needed:.1f}s ca intervalul dintre segmente să fie aproximativ {TARGET_SEGMENT_INTERVAL_SECONDS}s...")
+                        time.sleep(wait_needed)
+                    else:
+                        print(f"Intervalul segmentului a fost {elapsed:.1f}s; continui imediat cu următorul segment.")
 
                     # Verifică din nou URL-ul după delay
                     try:
@@ -5529,77 +6052,52 @@ class ChromePDFDownloader:
                             current_url.startswith('chrome://') or
                             '?pg=' in current_url or
                             '/?layout=' in current_url):
-                            print(f"⚠ URL s-a schimbat după delay: {current_url}")
-                            print(f"🔄 Renavigez la URL-ul corect...")
+                            print(f" URL s-a schimbat după delay: {current_url}")
+                            print(f" Renavigez la URL-ul corect...")
                             if not self.navigate_to_page(self.current_issue_url):
-                                print(f"❌ Nu pot renaviga după delay")
+                                print(f" Nu pot renaviga după delay")
                                 # Continuă oricum, dar va eșua la următorul segment
                             else:
-                                print(f"✅ Renavigat după delay - aștept stabilizare...")
-                                time.sleep(5)  # Delay mărit pentru stabilizare completă
+                                print(f" Renavigat după delay - aștept stabilizare...")
+                                time.sleep(RENAVIGATE_STABILIZE_SECONDS)
 
                                 # Verifică din nou că suntem pe URL-ul corect
                                 verify_url = self.driver.current_url
                                 if self.current_issue_url not in verify_url:
-                                    print(f"⚠ URL încă greșit după renavigare: {verify_url}")
-                                    print(f"🔄 Reîncerc renavigarea...")
+                                    print(f" URL încă greșit după renavigare: {verify_url}")
+                                    print(f" Reîncerc renavigarea...")
                                     self.navigate_to_page(self.current_issue_url)
-                                    time.sleep(3)
+                                    time.sleep(RENAVIGATE_STABILIZE_SECONDS)
                     except Exception as e:
-                        print(f"⚠ Eroare la verificarea URL-ului după delay: {e}")
+                        print(f" Eroare la verificarea URL-ului după delay: {e}")
             else:
+                if self.state.get("download_no_file_stop", False):
+                    print(" OPRIRE - 3 Save-uri fara PDF confirmat pe HDD.")
+                    return last_successful_page, False
+
                 if self.state.get("daily_limit_hit", False):
-                    print(f"🛑 OPRIRE - Limită zilnică atinsă la segmentul {start}-{end}")
+                    print(f" OPRIRE - Limită zilnică atinsă la segmentul {start}-{end}")
                     return last_successful_page, True
 
-                print(f"❌ SEGMENT EȘUAT: {start}-{end}")
+                print(f" SEGMENT EȘUAT: {start}-{end}")
                 failed_segments.append((start, end))
                 consecutive_failures += 1
 
                 if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                    print(f"🚨 PREA MULTE EȘECURI CONSECUTIVE ({consecutive_failures})")
-                    print(f"🔄 ÎNCERC RECOVERY COMPLET...")
-
-                    try:
-                        # Recovery: Repornește Firefox complet
-                        # setup_firefox_driver() va închide automat orice Firefox existent
-                        print(f"🔄 Recovery: Repornesc Firefox...")
-                        if not self.setup_chrome_driver(browser="firefox"):
-                            print(f"❌ Recovery eșuat - opresc procesarea")
-                            break
-                        print(f"✅ Firefox repornit pentru recovery")
-
-                        if not self.navigate_to_page(self.current_issue_url):
-                            print(f"❌ Nu pot renaviga după recovery")
-                            break
-
-                        consecutive_failures = 0
-                        print(f"✅ Recovery reușit - REÎNCERC segmentul eșuat {start}-{end}")
-                        time.sleep(3)
-
-                        # 🔥 REÎNCEARCĂ SEGMENTUL EȘUAT în loc să sară peste el
-                        print(f"🔄 REÎNCERC: Segmentul {start}-{end} după recovery...")
-                        retry_result = self.save_page_range(start, end, retries=3)
-
-                        if retry_result:
-                            print(f"✅ SUCCESS după recovery: Segmentul {start}-{end}")
-                            # Elimină din failed_segments dacă reușește
-                            if (start, end) in failed_segments:
-                                failed_segments.remove((start, end))
-                            # Actualizează progresul
-                            last_successful_page = end
-                            self._update_partial_issue_progress(self.current_issue_url, end, total_pages=total)
-                            print(f"✅ Progres salvat: pagini până la {end}")
-                        else:
-                            print(f"❌ Segmentul {start}-{end} a eșuat din nou după recovery")
-                            print(f"⏭️ Continui cu următorul segment...")
-
-                    except Exception as e:
-                        print(f"❌ Eroare în recovery: {e}")
-                        break
+                    print(f" PREA MULTE EȘECURI CONSECUTIVE ({consecutive_failures})")
+                    print(" OPRIRE: nu mai fac recovery si nu mai apas Save pe alte segmente.")
+                    print("   Motiv: cererile Save fara PDF pe HDD pot consuma limita zilnica Arcanum.")
+                    self.state["download_no_file_stop"] = True
+                    self.state["download_no_file_issue"] = self.current_issue_url
+                    self.state["download_no_file_segment"] = f"{start}-{end}"
+                    self.state["download_no_file_reason"] = "3 esecuri consecutive in save_all_pages_in_batches"
+                    self.state["download_no_file_attempts"] = consecutive_failures
+                    self.state["download_no_file_at"] = datetime.now().isoformat(timespec="seconds")
+                    self._save_state_safe()
+                    return last_successful_page, False
                 else:
-                    print(f"🔄 Eșecuri consecutive: {consecutive_failures}/{MAX_CONSECUTIVE_FAILURES}")
-                    print(f"⏳ Continui cu următorul segment după pauză...")
+                    print(f" Eșecuri consecutive: {consecutive_failures}/{MAX_CONSECUTIVE_FAILURES}")
+                    print(f"Continui cu următorul segment după pauză...")
                     time.sleep(2)
 
             # Actualizează progresul pentru segmentele reușite
@@ -5611,28 +6109,28 @@ class ChromePDFDownloader:
 
         # RAPORTARE FINALĂ
         successful_segments = len(actual_segments_to_download) - len(failed_segments)
-        print(f"📊 PROGRES FINAL: {last_successful_page}/{total} pagini")
-        print(f"📊 SEGMENTE: {successful_segments}/{len(actual_segments_to_download)} reușite")
+        print(f" PROGRES FINAL: {last_successful_page}/{total} pagini")
+        print(f" SEGMENTE: {successful_segments}/{len(actual_segments_to_download)} reușite")
 
         if failed_segments:
-            print(f"📊 SEGMENTE EȘUATE: {len(failed_segments)}")
+            print(f" SEGMENTE EȘUATE: {len(failed_segments)}")
             for start, end in failed_segments:
-                print(f"   ❌ {start}-{end}")
+                print(f"    {start}-{end}")
 
         # === VERIFICARE CRITICĂ FINALĂ: SCANEAZĂ DISK-UL PENTRU PROGRES REAL ===
-        print(f"\n🔍 VERIFICARE CRITICĂ: Scanez disk-ul pentru progres REAL...")
+        print(f"\n VERIFICARE CRITICĂ: Scanez disk-ul pentru progres REAL...")
 
-        actual_segments_on_disk = self.get_all_pdf_segments_for_issue(self.current_issue_url)
+        actual_segments_on_disk = self.get_all_pdf_segments_for_issue_anywhere(self.current_issue_url)
 
         if actual_segments_on_disk:
-            print(f"📄 Segmente găsite pe disk: {len(actual_segments_on_disk)}")
+            print(f" Segmente găsite pe disk: {len(actual_segments_on_disk)}")
 
             # Sortează segmentele după pagina de început
             actual_segments_on_disk.sort(key=lambda x: x['start'])
 
             # Afișează segmentele găsite
             for seg in actual_segments_on_disk:
-                print(f"   ✅ {seg['filename']} (pagini {seg['start']}-{seg['end']})")
+                print(f"    {seg['filename']} (pagini {seg['start']}-{seg['end']})")
 
             # === CALCUL CORECT: Găsește ultimul segment CONSECUTIV de la început ===
             real_last_page = 0
@@ -5649,10 +6147,10 @@ class ChromePDFDownloader:
 
                 # Dacă lipsește un segment, OPREȘTE numărarea
                 if not found:
-                    print(f"⚠️ OPRIT LA SEGMENT: {expected_start}-{expected_end} (LIPSEȘTE)")
+                    print(f" OPRIT LA SEGMENT: {expected_start}-{expected_end} (LIPSEȘTE)")
                     break
 
-            print(f"📊 PROGRES REAL CONSECUTIV DE PE DISK: {real_last_page}/{total} pagini")
+            print(f" PROGRES REAL CONSECUTIV DE PE DISK: {real_last_page}/{total} pagini")
 
             # Identifică TOATE găurile (nu doar până la primul lipsă)
             missing_ranges = []
@@ -5666,18 +6164,18 @@ class ChromePDFDownloader:
                     missing_ranges.append((expected_start, expected_end))
 
             if missing_ranges:
-                print(f"\n⚠️ GĂURI DETECTATE: {len(missing_ranges)} segmente lipsă pe disk!")
+                print(f"\n GĂURI DETECTATE: {len(missing_ranges)} segmente lipsă pe disk!")
                 for start, end in missing_ranges[:10]:  # Primele 10
-                    print(f"   ❌ LIPSEȘTE: pages{start}-{end}")
+                    print(f"    LIPSEȘTE: pages{start}-{end}")
                 if len(missing_ranges) > 10:
                     print(f"   ... și încă {len(missing_ranges) - 10} segmente lipsă")
 
             # FOLOSEȘTE PROGRESUL REAL CONSECUTIV DE PE DISK
             last_successful_page = real_last_page
 
-            print(f"\n✅ PROGRES FINAL CORECTAT (CONSECUTIV): {last_successful_page}/{total}")
+            print(f"\n PROGRES FINAL CORECTAT (CONSECUTIV): {last_successful_page}/{total}")
         else:
-            print(f"⚠️ Nu am găsit NICIUN segment pe disk pentru acest issue!")
+            print(f" Nu am găsit NICIUN segment pe disk pentru acest issue!")
             last_successful_page = 0
 
         completion_rate = (last_successful_page / total) * 100 if total > 0 else 0
@@ -5690,7 +6188,7 @@ class ChromePDFDownloader:
         CRITICAL: Verifică că TOATE segmentele sunt prezente și consecutive
         Returns: (bool: all_present, list: missing_segments)
         """
-        print(f"🔍 VERIFICARE CRITICĂ: Scanez completitudinea segmentelor pentru {issue_url}")
+        print(f" VERIFICARE CRITICĂ: Scanez completitudinea segmentelor pentru {issue_url}")
 
         # PASUL 1: Obține toate segmentele de pe disk
         item = self.find_issue_state_item(issue_url) if hasattr(self, "find_issue_state_item") else None
@@ -5701,7 +6199,7 @@ class ChromePDFDownloader:
             all_segments = self.get_all_pdf_segments_for_issue(issue_url)
 
         if not all_segments:
-            print(f"❌ Nu am găsit niciun segment!")
+            print(f" Nu am găsit niciun segment!")
             return False, []
 
         # PASUL 2: Calculează segmentele așteptate
@@ -5720,7 +6218,7 @@ class ChromePDFDownloader:
             expected_segments.append((current, end))
             current += bs
 
-        print(f"📊 Segmente așteptate: {len(expected_segments)}")
+        print(f" Segmente așteptate: {len(expected_segments)}")
 
         # PASUL 3: Verifică fiecare segment așteptat
         missing_segments = []
@@ -5736,21 +6234,21 @@ class ChromePDFDownloader:
                 # Verifică dacă segmentul de pe disk acoperă complet intervalul așteptat
                 if disk_start <= expected_start and disk_end >= expected_end:
                     found = True
-                    print(f"   ✅ Segment {expected_start}-{expected_end}: găsit ({disk_seg['filename']})")
+                    print(f"    Segment {expected_start}-{expected_end}: găsit ({disk_seg['filename']})")
                     break
 
             if not found:
                 missing_segments.append((expected_start, expected_end))
-                print(f"   ❌ Segment {expected_start}-{expected_end}: LIPSEȘTE!")
+                print(f"    Segment {expected_start}-{expected_end}: LIPSEȘTE!")
 
         # PASUL 4: Raport final
         if missing_segments:
-            print(f"🚨 PROBLEMA DETECTATĂ: {len(missing_segments)} segmente lipsă!")
+            print(f" PROBLEMA DETECTATĂ: {len(missing_segments)} segmente lipsă!")
             for start, end in missing_segments:
-                print(f"   📄 Lipsește: pages{start}-{end}")
+                print(f"    Lipsește: pages{start}-{end}")
             return False, missing_segments
         else:
-            print(f"✅ TOATE {len(expected_segments)} segmente sunt prezente și complete!")
+            print(f" TOATE {len(expected_segments)} segmente sunt prezente și complete!")
             return True, []
 
     def download_missing_segments(self, issue_url, missing_segments):
@@ -5760,39 +6258,39 @@ class ChromePDFDownloader:
         if not missing_segments:
             return True
 
-        print(f"🔄 RECUPERARE: Descarc {len(missing_segments)} segmente lipsă pentru {issue_url}")
+        print(f" RECUPERARE: Descarc {len(missing_segments)} segmente lipsă pentru {issue_url}")
 
         # PASUL 1: Navigă la issue
         if not self.navigate_to_page(issue_url):
-            print(f"❌ Nu pot naviga la {issue_url}")
+            print(f" Nu pot naviga la {issue_url}")
             return False
 
         # Așteaptă ca pagina să se încarce complet (delay pentru securitate site)
-        print("⏳ Aștept 3 secunde pentru încărcarea completă a paginii...")
+        print("Aștept 3 secunde pentru încărcarea completă a paginii...")
         time.sleep(3)
 
         # PASUL 2: Descarcă fiecare segment lipsă
         success_count = 0
 
         for start, end in missing_segments:
-            print(f"📥 Descarc segmentul lipsă: pages{start}-{end}")
+            print(f" Descarc segmentul lipsă: pages{start}-{end}")
 
             result = self.save_page_range(start, end, retries=3)
 
             if result:
                 success_count += 1
-                print(f"✅ Segment recuperat: pages{start}-{end}")
+                print(f" Segment recuperat: pages{start}-{end}")
             else:
-                print(f"❌ Nu am putut recupera segmentul: pages{start}-{end}")
+                print(f" Nu am putut recupera segmentul: pages{start}-{end}")
 
                 # Verifică limita zilnică
                 if self.state.get("daily_limit_hit", False):
-                    print(f"🛑 Limită zilnică atinsă în timpul recuperării")
+                    print(f" Limită zilnică atinsă în timpul recuperării")
                     return False
 
             time.sleep(2)
 
-        print(f"📊 Recuperare finalizată: {success_count}/{len(missing_segments)} segmente descărcate")
+        print(f" Recuperare finalizată: {success_count}/{len(missing_segments)} segmente descărcate")
 
         return success_count == len(missing_segments)
 
@@ -5808,7 +6306,7 @@ class ChromePDFDownloader:
             # SELECTOR GENERIC: orice link care conține '/view/' în href
             anchors = self.driver.find_elements(By.CSS_SELECTOR, 'li.list-group-item a[href*="/view/"]')
 
-            print(f"🔍 Am găsit {len(anchors)} linkuri brute cu '/view/' în colecție")
+            print(f" Am găsit {len(anchors)} linkuri brute cu '/view/' în colecție")
 
             links = []
             for a in anchors:
@@ -5826,67 +6324,67 @@ class ChromePDFDownloader:
                     seen.add(l)
                     unique.append(l)
 
-            print(f"🔗 Am găsit {len(unique)} linkuri UNICE de issue în colecție")
+            print(f" Am găsit {len(unique)} linkuri UNICE de issue în colecție")
 
             # DEBUGGING pentru colecțiile problematice
             if len(unique) == 0:
-                print(f"🔍 DEBUG - Nu am găsit linkuri. Analizez structura paginii...")
+                print(f" DEBUG - Nu am găsit linkuri. Analizez structura paginii...")
 
                 # Verifică dacă există lista de grupuri
                 try:
                     list_groups = self.driver.find_elements(By.CSS_SELECTOR, 'ul.list-group')
-                    print(f"🔍 Liste grup găsite: {len(list_groups)}")
+                    print(f" Liste grup găsite: {len(list_groups)}")
 
                     list_items = self.driver.find_elements(By.CSS_SELECTOR, 'li.list-group-item')
-                    print(f"🔍 Elemente listă găsite: {len(list_items)}")
+                    print(f" Elemente listă găsite: {len(list_items)}")
 
                     # Verifică toate linkurile din pagină
                     all_links = self.driver.find_elements(By.CSS_SELECTOR, 'a[href*="/view/"]')
-                    print(f"🔍 TOATE linkurile cu '/view/' din pagină: {len(all_links)}")
+                    print(f" TOATE linkurile cu '/view/' din pagină: {len(all_links)}")
 
                     for i, link in enumerate(all_links[:10]):  # Primele 10 pentru debugging
                         href = link.get_attribute("href")
                         text = link.text.strip()[:50]
-                        print(f"   {i+1}. 🔗 {href}")
-                        print(f"      📝 Text: '{text}'")
+                        print(f"   {i+1}.  {href}")
+                        print(f"       Text: '{text}'")
 
                     # Verifică structura HTML a primelor elemente
                     if list_items:
-                        print(f"🔍 Primul element listă HTML:")
+                        print(f" Primul element listă HTML:")
                         print(f"   {list_items[0].get_attribute('outerHTML')[:200]}...")
 
                 except Exception as debug_e:
-                    print(f"⚠ Eroare în debugging: {debug_e}")
+                    print(f" Eroare în debugging: {debug_e}")
             else:
                 # Afișează primele câteva linkuri găsite pentru verificare
-                print(f"📋 Primele linkuri găsite:")
+                print(f" Primele linkuri găsite:")
                 for i, link in enumerate(unique[:5]):
                     # Extrage anul sau identificatorul din URL
                     parts = link.split('/')[-1].split('_')
                     identifier = parts[-1] if len(parts) > 1 else "N/A"
-                    print(f"   {i+1}. 🔗 {identifier}: {link}")
+                    print(f"   {i+1}.  {identifier}: {link}")
 
                 if len(unique) > 5:
-                    print(f"   📊 ... și încă {len(unique) - 5} linkuri")
+                    print(f"    ... și încă {len(unique) - 5} linkuri")
 
             return unique
 
         except Exception as e:
-            print(f"❌ Eroare la extragerea linkurilor din colecție: {e}")
+            print(f" Eroare la extragerea linkurilor din colecție: {e}")
 
             # Debugging suplimentar în caz de eroare
             try:
                 current_url = self.driver.current_url
                 page_title = self.driver.title
-                print(f"🔍 URL curent: {current_url}")
-                print(f"🔍 Titlu pagină: {page_title}")
+                print(f" URL curent: {current_url}")
+                print(f" Titlu pagină: {page_title}")
 
                 # Verifică dacă pagina s-a încărcat corect
                 body_text = self.driver.find_element(By.TAG_NAME, "body").text[:200]
-                print(f"🔍 Început conținut: '{body_text}...'")
+                print(f" Început conținut: '{body_text}...'")
 
             except Exception as debug_e:
-                print(f"⚠ Eroare în debugging după eroare: {debug_e}")
+                print(f" Eroare în debugging după eroare: {debug_e}")
 
             return []
 
@@ -5913,25 +6411,25 @@ class ChromePDFDownloader:
         backup_base_dir = r"g:\Temporare"
         backup_dir = os.path.join(backup_base_dir, folder_name)
 
-        print(f"📁 Procesez PDF-urile pentru '{issue_title}' cu ID '{issue_id}'")
+        print(f" Procesez PDF-urile pentru '{issue_title}' cu ID '{issue_id}'")
 
-        # ⏳ AȘTEAPTĂ CA TOATE FIȘIERELE SĂ FIE COMPLET DESCĂRCATE
-        print("⏳ Aștept 10 secunde ca toate fișierele să se termine de descărcat...")
+        # ASTEAPTA CA TOATE FISIERELE SA FIE COMPLET DESCARCATE
+        print("Aștept 10 secunde ca toate fișierele să se termine de descărcat...")
         time.sleep(20)
 
         # PASUL 1: Găsește TOATE fișierele pentru acest issue
         all_segments = self.get_all_pdf_segments_for_issue(issue_url)
 
         if not all_segments:
-            print(f"ℹ️ Nu am găsit fișiere PDF pentru '{issue_title}' cu ID '{issue_id}'.")
+            print(f"INFO: Nu am găsit fișiere PDF pentru '{issue_title}' cu ID '{issue_id}'.")
             return
 
-        print(f"🔍 Am găsit {len(all_segments)} fișiere PDF pentru '{issue_id}':")
+        print(f" Am găsit {len(all_segments)} fișiere PDF pentru '{issue_id}':")
         for seg in all_segments:
-            print(f"   📄 {seg['filename']} (pagini {seg['start']}-{seg['end']})")
+            print(f"    {seg['filename']} (pagini {seg['start']}-{seg['end']})")
 
         # PASUL 1.5: CREEAZĂ BACKUP-UL ÎNAINTE DE PROCESARE
-        print(f"💾 Creez backup în: {backup_dir}")
+        print(f" Creez backup în: {backup_dir}")
         try:
             os.makedirs(backup_dir, exist_ok=True)
             backup_success = True
@@ -5945,20 +6443,20 @@ class ChromePDFDownloader:
                     shutil.copy2(src, backup_dst)  # copy2 păstrează și metadata
                     file_size = os.path.getsize(backup_dst)
                     backup_size_total += file_size
-                    print(f"💾 BACKUP: {seg['filename']} → g:\\Temporare\\{folder_name}\\")
+                    print(f" BACKUP: {seg['filename']} -> g:\\Temporare\\{folder_name}\\")
                 except Exception as e:
-                    print(f"⚠ EROARE backup pentru {seg['filename']}: {e}")
+                    print(f" EROARE backup pentru {seg['filename']}: {e}")
                     backup_success = False
 
             backup_size_mb = backup_size_total / (1024 * 1024)
             if backup_success:
-                print(f"✅ BACKUP COMPLET: {len(all_segments)} fișiere ({backup_size_mb:.2f} MB) în {backup_dir}")
+                print(f" BACKUP COMPLET: {len(all_segments)} fișiere ({backup_size_mb:.2f} MB) în {backup_dir}")
             else:
-                print(f"⚠ BACKUP PARȚIAL: Unele fișiere nu au putut fi copiate în backup")
+                print(f" BACKUP PARȚIAL: Unele fișiere nu au putut fi copiate în backup")
 
         except Exception as e:
-            print(f"❌ EROARE la crearea backup-ului: {e}")
-            print(f"🛡️ OPRESC PROCESAREA pentru siguranță - fișierele rămân pe G:\\")
+            print(f" EROARE la crearea backup-ului: {e}")
+            print(f" OPRESC PROCESAREA pentru siguranță - fișierele rămân pe G:\\")
             return
 
         # PASUL 2: MUTĂ (nu copiază) TOATE fișierele în folder (DOAR DUPĂ backup SUCCESS)
@@ -5969,23 +6467,23 @@ class ChromePDFDownloader:
             try:
                 shutil.move(src, dst)  # MOVE în loc de COPY
                 moved_files.append(dst)
-                print(f"📄 MUTAT: {seg['filename']} → {folder_name}/")
+                print(f" MUTAT: {seg['filename']} -> {folder_name}/")
             except Exception as e:
-                print(f"⚠ Nu am reușit să mut {seg['filename']}: {e}")
+                print(f" Nu am reușit să mut {seg['filename']}: {e}")
 
         if not moved_files:
-            print(f"❌ Nu am reușit să mut niciun fișier pentru '{issue_title}'.")
+            print(f" Nu am reușit să mut niciun fișier pentru '{issue_title}'.")
             return
 
-        print(f"📁 Toate {len(moved_files)} PDF-urile pentru '{issue_title}' au fost MUTATE în '{dest_dir}'.")
-        print(f"💾 BACKUP SIGUR găsit în: {backup_dir}")
+        print(f" Toate {len(moved_files)} PDF-urile pentru '{issue_title}' au fost MUTATE în '{dest_dir}'.")
+        print(f" BACKUP SIGUR găsit în: {backup_dir}")
 
         # PASUL 3: Combină PDF-urile în ordinea corectă
         output_file = os.path.join(dest_dir, f"{folder_name}.pdf")
 
         try:
             if len(moved_files) > 1:
-                print(f"🔗 Combinez {len(moved_files)} fișiere PDF în ordinea corectă...")
+                print(f" Combinez {len(moved_files)} fișiere PDF în ordinea corectă...")
 
                 # Sortează fișierele după range-ul de pagini
                 files_with_ranges = []
@@ -5999,10 +6497,10 @@ class ChromePDFDownloader:
                 sorted_files = [x[2] for x in files_with_ranges]
 
                 # Afișează ordinea de combinare
-                print("📋 Ordinea de combinare:")
+                print(" Ordinea de combinare:")
                 for start, end, path in files_with_ranges:
                     filename = os.path.basename(path)
-                    print(f"   📄 {filename} (pagini {start}-{end})")
+                    print(f"    {filename} (pagini {start}-{end})")
 
                 from PyPDF2 import PdfMerger
                 merger = PdfMerger()
@@ -6011,9 +6509,9 @@ class ChromePDFDownloader:
                     try:
                         merger.append(pdf_path)
                         filename = os.path.basename(pdf_path)
-                        print(f"   ✅ Adăugat în ordine: {filename}")
+                        print(f"    Adăugat în ordine: {filename}")
                     except Exception as e:
-                        print(f"   ⚠ Eroare la adăugarea {pdf_path}: {e}")
+                        print(f"    Eroare la adăugarea {pdf_path}: {e}")
 
                 # Scrie fișierul combinat
                 merger.write(output_file)
@@ -6022,7 +6520,7 @@ class ChromePDFDownloader:
                 # Verifică că fișierul combinat a fost creat cu succes
                 if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
                     file_size_mb = os.path.getsize(output_file) / (1024 * 1024)
-                    print(f"✅ Fișierul combinat creat cu succes: {file_size_mb:.2f} MB")
+                    print(f" Fișierul combinat creat cu succes: {file_size_mb:.2f} MB")
 
                     # ȘTERGE SEGMENTELE DIN FOLDER (nu mai sunt copii, sunt originalele mutate)
                     deleted_count = 0
@@ -6034,19 +6532,19 @@ class ChromePDFDownloader:
                             os.remove(file_to_delete)
                             deleted_count += 1
                             total_deleted_size += file_size
-                            print(f"   🗑️ Șters segment: {os.path.basename(file_to_delete)}")
+                            print(f"    Șters segment: {os.path.basename(file_to_delete)}")
                         except Exception as e:
-                            print(f"   ⚠ Nu am putut șterge {file_to_delete}: {e}")
+                            print(f"    Nu am putut șterge {file_to_delete}: {e}")
 
                     deleted_size_mb = total_deleted_size / (1024 * 1024)
-                    print(f"🎉 FINALIZAT: Păstrat doar fișierul combinat '{os.path.basename(output_file)}'")
-                    print(f"🗑️ Șterse {deleted_count} segmente originale ({deleted_size_mb:.2f} MB)")
-                    print(f"💾 BACKUP SIGUR: Segmentele originale păstrate în {backup_dir}")
+                    print(f" FINALIZAT: Păstrat doar fișierul combinat '{os.path.basename(output_file)}'")
+                    print(f" Șterse {deleted_count} segmente originale ({deleted_size_mb:.2f} MB)")
+                    print(f" BACKUP SIGUR: Segmentele originale păstrate în {backup_dir}")
 
                 else:
-                    print(f"❌ EROARE: Fișierul combinat nu a fost creat corect!")
-                    print(f"🛡️ SIGURANȚĂ: Păstrez segmentele pentru siguranță")
-                    print(f"💾 BACKUP DISPONIBIL: {backup_dir}")
+                    print(f" EROARE: Fișierul combinat nu a fost creat corect!")
+                    print(f" SIGURANȚĂ: Păstrez segmentele pentru siguranță")
+                    print(f" BACKUP DISPONIBIL: {backup_dir}")
 
             elif len(moved_files) == 1:
                 # Un singur fișier - doar redenumește
@@ -6055,18 +6553,18 @@ class ChromePDFDownloader:
 
                 try:
                     os.replace(original_file, output_file)
-                    print(f"✅ Fișierul redenumit în: {os.path.basename(output_file)} ({original_size_mb:.2f} MB)")
-                    print(f"💾 BACKUP SIGUR: Originalul păstrat în {backup_dir}")
+                    print(f" Fișierul redenumit în: {os.path.basename(output_file)} ({original_size_mb:.2f} MB)")
+                    print(f" BACKUP SIGUR: Originalul păstrat în {backup_dir}")
                 except Exception as e:
-                    print(f"⚠ Nu am putut redenumi {original_file}: {e}")
+                    print(f" Nu am putut redenumi {original_file}: {e}")
 
             else:
-                print(f"ℹ️ Nu există fișiere PDF de combinat în '{dest_dir}'.")
+                print(f"INFO: Nu există fișiere PDF de combinat în '{dest_dir}'.")
 
         except Exception as e:
-            print(f"❌ EROARE la combinarea PDF-urilor: {e}")
-            print(f"🛡️ SIGURANȚĂ: Păstrez segmentele din cauza erorii")
-            print(f"💾 BACKUP DISPONIBIL: {backup_dir}")
+            print(f" EROARE la combinarea PDF-urilor: {e}")
+            print(f" SIGURANȚĂ: Păstrez segmentele din cauza erorii")
+            print(f" BACKUP DISPONIBIL: {backup_dir}")
             return
 
         # PASUL 4: Raport final
@@ -6074,17 +6572,17 @@ class ChromePDFDownloader:
             if os.path.exists(output_file):
                 final_size_mb = os.path.getsize(output_file) / (1024 * 1024)
 
-                print(f"\n📋 RAPORT FINAL pentru '{issue_title}':")
-                print(f"   📁 Folder destinație: {dest_dir}")
-                print(f"   📄 Fișier final: {os.path.basename(output_file)} ({final_size_mb:.2f} MB)")
-                print(f"   🔍 Combinat din {len(all_segments)} segmente")
-                print(f"   💾 BACKUP SIGUR: {backup_dir} ({backup_size_mb:.2f} MB)")
-                print(f"   ✅ STATUS: SUCCES - fișier complet creat, backup realizat, segmente șterse de pe G:\\")
+                print(f"\n RAPORT FINAL pentru '{issue_title}':")
+                print(f"    Folder destinație: {dest_dir}")
+                print(f"    Fișier final: {os.path.basename(output_file)} ({final_size_mb:.2f} MB)")
+                print(f"    Combinat din {len(all_segments)} segmente")
+                print(f"    BACKUP SIGUR: {backup_dir} ({backup_size_mb:.2f} MB)")
+                print(f"    STATUS: SUCCES - fișier complet creat, backup realizat, segmente șterse de pe G:\\")
             else:
-                print(f"⚠ Nu s-a putut crea fișierul final pentru '{issue_title}'")
-                print(f"💾 BACKUP DISPONIBIL: {backup_dir}")
+                print(f" Nu s-a putut crea fișierul final pentru '{issue_title}'")
+                print(f" BACKUP DISPONIBIL: {backup_dir}")
         except Exception as e:
-            print(f"⚠ Eroare la raportul final: {e}")
+            print(f" Eroare la raportul final: {e}")
 
         print(f"=" * 60)
 
@@ -6160,24 +6658,128 @@ class ChromePDFDownloader:
         _, dest_dir, _ = self.get_issue_output_paths(issue_url, issue_title)
         return self.get_pdf_segments_for_issue_in_dir(issue_url, dest_dir)
 
+    def get_temporare_pdf_segments_for_issue(self, issue_url: str):
+        """Scaneaza g:\\Temporare dupa ID-ul issue-ului, independent de titlul din JSON."""
+        issue_id = self._issue_id_from_url(issue_url)
+        expected_year = self._issue_year_from_url(issue_url)
+        temporare_dir = r"g:\Temporare"
+        segments = []
+
+        if not os.path.isdir(temporare_dir):
+            return segments
+
+        try:
+            for root, _, files in os.walk(temporare_dir):
+                for filename in files:
+                    if issue_id not in filename or "__pages" not in filename or not filename.lower().endswith(".pdf"):
+                        continue
+
+                    file_issue_id = self.extract_issue_id_from_filename(filename)
+                    if file_issue_id != issue_id:
+                        continue
+
+                    path = os.path.join(root, filename)
+                    if expected_year:
+                        folder_years = set(re.findall(r'\b(18\d{2}|19\d{2}|20\d{2})\b', os.path.basename(root)))
+                        if folder_years and expected_year not in folder_years:
+                            print(f"WARNING: Ignor segment din Temporare cu folder/an nepotrivit: {path}")
+                            continue
+
+                    start_page, end_page = self.extract_page_range_from_filename(filename)
+                    if start_page <= 0 or end_page <= 0:
+                        continue
+
+                    if not self.is_valid_pdf_file(path):
+                        print(f"WARNING: PDF invalid/nesalvat complet ignorat din Temporare: {filename}")
+                        continue
+
+                    segments.append({
+                        "filename": filename,
+                        "start": start_page,
+                        "end": end_page,
+                        "path": path
+                    })
+        except Exception as e:
+            print(f"WARNING: Eroare la scanarea g:\\Temporare pentru {issue_id}: {e}")
+
+        segments.sort(key=lambda x: (x["start"], x["end"], x["filename"]))
+        return segments
+
     def get_all_pdf_segments_for_issue_anywhere(self, issue_url: str, issue_title: str = None):
         seen_paths = set()
         combined = []
 
-        for seg in self.get_all_pdf_segments_for_issue(issue_url):
-            real_path = os.path.normcase(os.path.abspath(seg["path"]))
-            if real_path not in seen_paths:
+        def add_segments(segments):
+            for seg in segments:
+                real_path = os.path.normcase(os.path.abspath(seg["path"]))
+                if real_path in seen_paths:
+                    continue
                 seen_paths.add(real_path)
                 combined.append(seg)
 
-        for seg in self.get_moved_pdf_segments_for_issue(issue_url, issue_title):
+        add_segments(self.get_all_pdf_segments_for_issue(issue_url))
+        add_segments(self.get_moved_pdf_segments_for_issue(issue_url, issue_title))
+        add_segments(self.get_temporare_pdf_segments_for_issue(issue_url))
+
+        by_range = {}
+        for seg in combined:
+            key = (seg["start"], seg["end"])
             real_path = os.path.normcase(os.path.abspath(seg["path"]))
-            if real_path not in seen_paths:
+            current = by_range.get(key)
+            if not current:
+                by_range[key] = seg
+                continue
+
+            current_path = os.path.normcase(os.path.abspath(current["path"]))
+            current_is_backup = "\\temporare\\" in current_path
+            new_is_backup = "\\temporare\\" in real_path
+
+            if current_is_backup and not new_is_backup:
+                by_range[key] = seg
+            elif current_is_backup == new_is_backup:
+                try:
+                    if os.path.getsize(seg["path"]) > os.path.getsize(current["path"]):
+                        by_range[key] = seg
+                except Exception:
+                    pass
+
+        unique_segments = list(by_range.values())
+        unique_segments.sort(key=lambda x: (x["start"], x["end"], x["filename"]))
+        return unique_segments
+
+    def get_active_pdf_segments_for_issue(self, issue_url: str, issue_title: str = None):
+        """Segmente care cer merge real: radacina G: sau folderul final, fara g:\\Temporare."""
+        seen_paths = set()
+        combined = []
+
+        def add_segments(segments):
+            for seg in segments:
+                real_path = os.path.normcase(os.path.abspath(seg["path"]))
+                if real_path in seen_paths:
+                    continue
                 seen_paths.add(real_path)
                 combined.append(seg)
 
-        combined.sort(key=lambda x: (x["start"], x["end"], x["filename"]))
-        return combined
+        add_segments(self.get_all_pdf_segments_for_issue(issue_url))
+        add_segments(self.get_moved_pdf_segments_for_issue(issue_url, issue_title))
+
+        by_range = {}
+        for seg in combined:
+            key = (seg["start"], seg["end"])
+            current = by_range.get(key)
+            if not current:
+                by_range[key] = seg
+                continue
+
+            try:
+                if os.path.getsize(seg["path"]) > os.path.getsize(current["path"]):
+                    by_range[key] = seg
+            except Exception:
+                pass
+
+        unique_segments = list(by_range.values())
+        unique_segments.sort(key=lambda x: (x["start"], x["end"], x["filename"]))
+        return unique_segments
 
     def has_complete_segment_set_anywhere(self, issue_url: str, total_pages: int, issue_title: str = None) -> bool:
         if not total_pages or total_pages <= 0:
@@ -6279,7 +6881,6 @@ class ChromePDFDownloader:
         """
         issue_id = self._issue_id_from_url(issue_url)
         folder_name, dest_dir, output_file = self.get_issue_output_paths(issue_url, issue_title)
-        os.makedirs(dest_dir, exist_ok=True)
 
         backup_base_dir = r"g:\Temporare"
         backup_dir = os.path.join(backup_base_dir, folder_name)
@@ -6296,7 +6897,28 @@ class ChromePDFDownloader:
 
         root_segments = self.get_all_pdf_segments_for_issue(issue_url)
         moved_segments = self.get_moved_pdf_segments_for_issue(issue_url, issue_title)
+        active_segments = self.get_active_pdf_segments_for_issue(issue_url, issue_title)
+        temporare_segments = self.get_temporare_pdf_segments_for_issue(issue_url)
         all_source_segments = self.get_all_pdf_segments_for_issue_anywhere(issue_url, issue_title)
+
+        item = self.find_issue_state_item(issue_url)
+        total_pages_from_state = (item or {}).get("total_pages", 0) or 0
+        item_is_already_complete = bool(
+            item and
+            item.get("completed_at") and
+            item.get("pages", 0) > 0 and
+            total_pages_from_state > 0 and
+            item.get("last_successful_segment_end", 0) >= total_pages_from_state
+        )
+
+        if item_is_already_complete and not active_segments:
+            temporare_progress = self.calculate_consecutive_progress_from_segments(
+                temporare_segments,
+                total_pages_from_state
+            ) if temporare_segments else 0
+            if temporare_progress >= total_pages_from_state:
+                print(f"OK: '{issue_title}' este deja complet in JSON; exista doar backup in g:\\Temporare. Nu refac PDF-ul final.")
+                return True
 
         if not all_source_segments:
             print(f"ERROR: Nu am gasit segmente PDF pentru '{issue_title}' cu ID '{issue_id}'.")
@@ -6342,6 +6964,7 @@ class ChromePDFDownloader:
             print("SIGURANTA: opresc procesarea; segmentele raman pe G.")
             return False
 
+        os.makedirs(dest_dir, exist_ok=True)
         print(f"Mut segmentele din radacina in folderul final: {dest_dir}")
         for seg in root_segments:
             src = seg["path"]
@@ -6371,12 +6994,43 @@ class ChromePDFDownloader:
 
         final_segments = self.get_moved_pdf_segments_for_issue(issue_url, issue_title)
 
+        if not final_segments and not root_segments and temporare_segments and not item_is_already_complete:
+            total_pages_for_repair = total_pages_from_state or self.infer_total_pages_from_segments(temporare_segments)
+            temporare_progress = self.calculate_consecutive_progress_from_segments(
+                temporare_segments,
+                total_pages_for_repair
+            ) if total_pages_for_repair else 0
+
+            if total_pages_for_repair and temporare_progress >= total_pages_for_repair:
+                print("REPARATIE: segmentele exista doar in g:\\Temporare; copiez backupul in folderul final pentru merge.")
+                for seg in temporare_segments:
+                    src = seg["path"]
+                    dst = os.path.join(dest_dir, seg["filename"])
+                    try:
+                        if not os.path.exists(dst) or os.path.getsize(dst) != os.path.getsize(src):
+                            shutil.copy2(src, dst)
+                            print(f"   COPIAT DIN BACKUP: {seg['filename']}")
+                    except Exception as e:
+                        print(f"WARNING: Nu am putut copia din backup {seg['filename']}: {e}")
+                final_segments = self.get_moved_pdf_segments_for_issue(issue_url, issue_title)
+
         if not final_segments:
             print(f"ERROR: Nu exista segmente in folderul final pentru '{issue_title}'.")
             return False
 
         item = self.find_issue_state_item(issue_url)
         total_pages = (item or {}).get("total_pages", 0) or 0
+        inferred_total_pages = self.infer_total_pages_from_segments(final_segments)
+        if inferred_total_pages and (not total_pages or inferred_total_pages < total_pages):
+            print(f"REPARAT: total_pages pare vechi ({total_pages}); ultimul segment scurt arata total real {inferred_total_pages}.")
+            total_pages = inferred_total_pages
+            real_progress_for_total = self.calculate_consecutive_progress_from_segments(final_segments, total_pages)
+            self._update_partial_issue_progress(
+                issue_url,
+                real_progress_for_total,
+                total_pages=total_pages,
+                title=issue_title,
+            )
         if total_pages > 0:
             real_progress = self.calculate_consecutive_progress_from_segments(final_segments, total_pages)
             print(f"Verificare segmente in folder: {real_progress}/{total_pages} pagini consecutive")
@@ -6423,6 +7077,10 @@ class ChromePDFDownloader:
         url = item.get("url", "")
         title = item.get("title", "")
 
+        if self._state_year_mismatch_for_issue(item):
+            print(f"WARNING: State suspect pentru {url}: anul din URL nu apare in titlu/subtitlu.")
+            return False
+
         json_complete = (
             completed_at and
             total_pages and
@@ -6438,14 +7096,20 @@ class ChromePDFDownloader:
             return True
 
         # Daca userul a uploadat si a sters folderul final, nu fortam redownload.
-        # Dar daca segmentele exista in radacina sau in folder, este un merge uitat.
+        # Dar daca segmentele exista in radacina sau in folderul final, este un merge uitat.
         if verify_physical:
-            segments = self.get_all_pdf_segments_for_issue_anywhere(url, title)
-            if segments:
-                progress = self.calculate_consecutive_progress_from_segments(segments, total_pages)
+            active_segments = self.get_active_pdf_segments_for_issue(url, title)
+            if active_segments:
+                progress = self.calculate_consecutive_progress_from_segments(active_segments, total_pages)
                 if progress >= total_pages:
-                    print(f"WARNING: {url} este marcat complet in JSON, dar PDF-ul final lipseste. Are segmente complete si trebuie facut merge.")
+                    print(f"WARNING: {url} este marcat complet in JSON, dar PDF-ul final lipseste. Are segmente active complete si trebuie facut merge.")
                     return False
+
+            temporare_segments = self.get_temporare_pdf_segments_for_issue(url)
+            if temporare_segments:
+                temporare_progress = self.calculate_consecutive_progress_from_segments(temporare_segments, total_pages)
+                if temporare_progress >= total_pages:
+                    print(f"OK: {url} este complet; segmentele ramase sunt doar backup in g:\\Temporare. Nu refac merge.")
 
         return True
 
@@ -6603,25 +7267,45 @@ class ChromePDFDownloader:
                 continue
 
             if state_complete and (not final_exists or state_queued):
-                segments = self.get_all_pdf_segments_for_issue_anywhere(url, title)
-                if final_exists or segments:
-                    progress = total_pages if final_exists else self.calculate_consecutive_progress_from_segments(segments, total_pages)
-                    if progress >= total_pages:
-                        self.queue_pending_pdf_finalization(
-                            normalized, title=title, subtitle=subtitle,
-                            total_pages=total_pages,
-                            reason="PDF final lipsa sau coada PDF dupa marcare completa"
-                        )
-                        issues_to_finalize.append({
-                            "url": normalized,
-                            "title": title,
-                            "subtitle": subtitle,
-                            "total_pages": total_pages,
-                            "already_marked": True,
-                            "reason": "PDF final lipsa/coada PDF dupa marcare completa"
-                        })
-                        seen_urls.add(normalized)
-                        print(f"GASIT: {normalized} - PDF final lipsa/coada PDF, issue deja marcat complet")
+                if final_exists:
+                    if state_queued:
+                        self.clear_pending_pdf_finalization(normalized)
+                    seen_urls.add(normalized)
+                    continue
+
+                active_segments = self.get_active_pdf_segments_for_issue(url, title)
+                active_progress = self.calculate_consecutive_progress_from_segments(active_segments, total_pages) if active_segments else 0
+                if active_progress >= total_pages:
+                    self.queue_pending_pdf_finalization(
+                        normalized, title=title, subtitle=subtitle,
+                        total_pages=total_pages,
+                        reason="PDF final lipsa sau coada PDF dupa marcare completa"
+                    )
+                    issues_to_finalize.append({
+                        "url": normalized,
+                        "title": title,
+                        "subtitle": subtitle,
+                        "total_pages": total_pages,
+                        "already_marked": True,
+                        "reason": "PDF final lipsa/coada PDF dupa marcare completa"
+                    })
+                    seen_urls.add(normalized)
+                    print(f"GASIT: {normalized} - PDF final lipsa/coada PDF, issue deja marcat complet")
+                    continue
+
+                temporare_segments = self.get_temporare_pdf_segments_for_issue(url)
+                temporare_progress = self.calculate_consecutive_progress_from_segments(temporare_segments, total_pages) if temporare_segments else 0
+                if temporare_progress >= total_pages:
+                    if state_queued:
+                        self.clear_pending_pdf_finalization(normalized)
+                    seen_urls.add(normalized)
+                    print(f"OK: {normalized} are doar backup complet in g:\\Temporare; nu refac PDF-ul final.")
+                    continue
+
+                if state_queued:
+                    self.clear_pending_pdf_finalization(normalized)
+                    seen_urls.add(normalized)
+                    print(f"OK: {normalized} era in coada PDF, dar nu are segmente active; pastrez starea completa.")
         for queued_url, queued in queued_by_url.items():
             if queued_url in seen_urls:
                 continue
@@ -6674,6 +7358,18 @@ class ChromePDFDownloader:
                     continue
 
                 segments = self.get_all_pdf_segments_for_issue_anywhere(url, title)
+                inferred_total_pages = self.infer_total_pages_from_segments(segments)
+                if inferred_total_pages and inferred_total_pages < total_pages:
+                    print(f"REPARAT: total_pages vechi in coada PDF ({total_pages}) -> {inferred_total_pages}, dedus din ultimul segment scurt.")
+                    total_pages = inferred_total_pages
+                    issue_data["total_pages"] = total_pages
+                    for state_issue in self.state.get("downloaded_issues", []):
+                        if self._normalize_issue_url(state_issue.get("url", "")) == url:
+                            state_issue["total_pages"] = total_pages
+                            if title:
+                                state_issue["title"] = title
+                            self._save_state_safe()
+                            break
                 progress = self.calculate_consecutive_progress_from_segments(segments, total_pages)
                 if progress < total_pages:
                     print(f"WARNING: Segmente incomplete pentru {url}: {progress}/{total_pages}. Il resetez pentru reluare download.")
@@ -6731,14 +7427,14 @@ class ChromePDFDownloader:
             next_index = last_index + 1
             if next_index < len(collection_links):
                 next_url = collection_links[next_index]
-                print(f"🎯 Următorul issue după '{last_completed_url}' este: '{next_url}'")
+                print(f" Următorul issue după '{last_completed_url}' este: '{next_url}'")
                 return next_url
             else:
-                print(f"✅ Toate issue-urile din colecție au fost procesate!")
+                print(f" Toate issue-urile din colecție au fost procesate!")
                 return None
         except ValueError:
             # Dacă last_completed_url nu e în lista curentă, începe cu primul
-            print(f"⚠ URL-ul '{last_completed_url}' nu e în colecția curentă, încep cu primul din listă")
+            print(f" URL-ul '{last_completed_url}' nu e în colecția curentă, încep cu primul din listă")
             return collection_links[0] if collection_links else None
 
     def get_last_completed_issue_from_collection(self, collection_links):
@@ -6749,15 +7445,15 @@ class ChromePDFDownloader:
 
                     # VERIFICARE CORECTĂ: Issue-ul trebuie să fie REAL complet
                     if self.is_issue_really_complete(item):
-                        print(f"🏁 Ultimul issue REAL complet din colecție: {url}")
+                        print(f" Ultimul issue REAL complet din colecție: {url}")
                         return url
                     elif item.get("completed_at"):
                         last_segment = item.get("last_successful_segment_end", 0)
                         total_pages = item.get("total_pages")
                         pages = item.get("pages", 0)
-                        print(f"⚠ Issue marcat ca complet dar INCOMPLET: {url} ({last_segment}/{total_pages}, pages: {pages})")
+                        print(f" Issue marcat ca complet dar INCOMPLET: {url} ({last_segment}/{total_pages}, pages: {pages})")
 
-            print("🆕 Niciun issue REAL complet găsit în colecția curentă")
+            print(" Niciun issue REAL complet găsit în colecția curentă")
             return None
 
 
@@ -6765,13 +7461,18 @@ class ChromePDFDownloader:
     def open_new_tab_and_download(self, url):
         """FIXED: Verificare simplă din JSON - fără verificare fizică"""
         normalized_url = url.rstrip('/')
+        self.current_issue_url = normalized_url
+        self.account_in_use_recoveries = 0
 
         # Skip URLs din lista statică
+        if normalized_url in self.dynamic_skip_urls and not self._skip_url_is_verified_complete(normalized_url):
+            print(f"WARNING: {url} era in skip list, dar nu este confirmat complet. Continui verificarea.")
+
         if normalized_url in self.dynamic_skip_urls:
-            print(f"⏭️ Sar peste {url} (în skip list).")
+            print(f"Sar peste {url} (în skip list).")
             return False
 
-        # ✅ VERIFICARE SIMPLIFICATĂ - doar din JSON
+        #  VERIFICARE SIMPLIFICATĂ - doar din JSON
         # Dacă are completed_at ȘI pages > 0, e complet și procesat!
         already_done = any(
             item.get("url") == normalized_url and
@@ -6783,24 +7484,28 @@ class ChromePDFDownloader:
         )
 
         if already_done:
-            print(f"⏭️ Sar peste {url} (deja descărcat și procesat complet în JSON).")
+            issue_item_for_skip = self.find_issue_state_item(normalized_url)
+            already_done = bool(issue_item_for_skip and self.is_issue_really_complete(issue_item_for_skip))
+
+        if already_done:
+            print(f"Sar peste {url} (deja descărcat și procesat complet în JSON).")
             return False
 
 
 
 
 
-        print(f"\n🎯 ÎNCEP FOCUSAREA PE: {url}")
+        print(f"\n ÎNCEP FOCUSAREA PE: {url}")
         print("=" * 60)
 
         try:
             # IMPORTANT: Redeschide Firefox dacă nu este deschis (după închiderea de la issue-ul anterior)
             if not hasattr(self, 'driver') or not self.driver:
-                print("🔄 Firefox nu este deschis - redeschid Firefox pentru noul issue...")
+                print(" Firefox nu este deschis - redeschid Firefox pentru noul issue...")
                 if not self.setup_chrome_driver(browser="firefox"):
-                    print("❌ Nu pot redeschide Firefox")
+                    print(" Nu pot redeschide Firefox")
                     return False
-                print("✅ Firefox redeschis cu succes")
+                print(" Firefox redeschis cu succes")
 
             if not self.attached_existing:
                 self.ensure_alive_fallback()
@@ -6814,50 +7519,50 @@ class ChromePDFDownloader:
             self.driver.switch_to.window(new_handle)
 
             if not self.navigate_to_page(url):
-                print(f"❌ Nu am putut naviga la {url}")
+                print(f" Nu am putut naviga la {url}")
                 return False
 
             time.sleep(2)
 
             # VERIFICARE NOUĂ: Este nevoie de login?
             if self.detect_login_required():
-                print("🔐 DETECTAT: Este necesară autentificarea!")
-                print("🔄 Încerc login automat...")
+                print(" DETECTAT: Este necesară autentificarea!")
+                print(" Încerc login automat...")
 
                 login_success = self.perform_auto_login()
 
                 if not login_success:
-                    print("❌ LOGIN EȘUAT - Opresc procesarea acestui issue")
+                    print(" LOGIN EȘUAT - Opresc procesarea acestui issue")
                     return False
 
-                print("✅ Login reușit - renavigez la issue...")
+                print(" Login reușit - renavigez la issue...")
 
                 # După login, renavigăm la issue-ul original
                 if not self.navigate_to_page(url):
-                    print(f"❌ Nu pot renaviga la {url} după login")
+                    print(f" Nu pot renaviga la {url} după login")
                     return False
 
                 time.sleep(3)
-                print("✅ Renavigat cu succes după login")
+                print(" Renavigat cu succes după login")
 
             # Verifică DOAR o dată la început pentru limită
             if self.check_daily_limit_in_all_windows(set_flag=False):
-                print("⚠ Pagină cu limită zilnică detectată - opresc aici.")
+                print(" Pagină cu limită zilnică detectată - opresc aici.")
                 self.state["daily_limit_hit"] = True
                 self._save_state()
                 return False
 
             if self.detect_account_in_use():
                 if not self.recover_from_account_in_use():
-                    print("❌ Account-in-use persistă; opresc acest issue fără să marchez progres fals.")
+                    print(" Account-in-use persistă; opresc acest issue fără să marchez progres fals.")
                     return False
 
-            print("✅ Pagina e OK, încep extragerea metadatelor...")
+            print(" Pagina e OK, încep extragerea metadatelor...")
             title, subtitle = self.get_issue_metadata()
 
             # FIXED: Scanează corect fișierele existente pentru acest issue specific
             existing_pages_max = self.get_existing_pdf_segments(url, title)
-            print(f"📊 Ultima pagina găsită pe disk: {existing_pages_max}")
+            print(f" Ultima pagina găsită pe disk: {existing_pages_max}")
 
             resume_from = 1
             json_progress = 0
@@ -6874,14 +7579,14 @@ class ChromePDFDownloader:
                 existing_pages = self.get_existing_pdf_consecutive_progress(url, total_pages_json, title)
                 actual_progress = max(json_progress, existing_pages)
                 if existing_pages < existing_pages_max:
-                    print(f"⚠️ Există găuri pe disk: max={existing_pages_max}, consecutiv={existing_pages}. Reiau de la prima gaură.")
+                    print(f" Există găuri pe disk: max={existing_pages_max}, consecutiv={existing_pages}. Reiau de la prima gaură.")
 
             # === VERIFICARE CRITICĂ: DISK vs JSON ===
-            # Dacă disk-ul arată 0 sau foarte puțin, dar JSON zice complet → JSON e greșit!
+            # Dacă disk-ul arată 0 sau foarte puțin, dar JSON zice complet -> JSON e greșit!
             if existing_pages == 0 and json_progress > 0:
                 actual_progress = 0
-                print(f"⚠️ DISCREPANȚĂ CRITICĂ: JSON zice {json_progress} pagini, dar disk-ul arată {existing_pages}!")
-                print(f"🔄 Ignor JSON-ul greșit - încep descărcarea de la 0!")
+                print(f" DISCREPANȚĂ CRITICĂ: JSON zice {json_progress} pagini, dar disk-ul arată {existing_pages}!")
+                print(f" Ignor JSON-ul greșit - încep descărcarea de la 0!")
                 resume_from = 1
                 # Resetează progresul în JSON
                 for item in self.state.get("downloaded_issues", []):
@@ -6890,61 +7595,64 @@ class ChromePDFDownloader:
                         item["completed_at"] = ""
                         item["pages"] = 0
                         self._save_state()
-                        print(f"✅ JSON resetat pentru {url}")
+                        print(f" JSON resetat pentru {url}")
                         break
             elif json_progress and total_pages_json and json_progress >= total_pages_json and existing_pages >= total_pages_json * 0.9:
                 # Doar dacă JSON zice complet ȘI disk-ul confirmă (>90% din pagini)
-                print(f"⏭️ Issue-ul {url} este deja complet (JSON: {json_progress}, Disk: {existing_pages}, Total: {total_pages_json}).")
+                print(f"Issue-ul {url} este deja complet (JSON: {json_progress}, Disk: {existing_pages}, Total: {total_pages_json}).")
                 return False
             else:
                 # Reiau de unde am rămas (folosind maximul dintre JSON și disk)
                 actual_progress = max(json_progress, existing_pages)
                 if actual_progress > 0:
                     resume_from = actual_progress + 1
-                    print(f"📄 Reiau de la pagina {resume_from} (JSON: {json_progress}, Disk: {existing_pages})")
+                    print(f" Reiau de la pagina {resume_from} (JSON: {json_progress}, Disk: {existing_pages})")
 
-            self.current_issue_url = normalized_url
 
             # FIXED: Obține total_pages și actualizează progresul
             total_pages = self.get_total_pages()
             if total_pages > 0:
                 self._update_partial_issue_progress(normalized_url, actual_progress, total_pages=total_pages, title=title, subtitle=subtitle)
             else:
-                print("⚠ Nu am putut obține numărul total de pagini!")
+                print(" Nu am putut obține numărul total de pagini!")
 
-            print(f"🔒 INTRÂND ÎN MODUL FOCUS - nu mai fac alte verificări până nu termin!")
+            print(f" INTRÂND ÎN MODUL FOCUS - nu mai fac alte verificări până nu termin!")
 
 # ==================== DESCĂRCAREA PROPRIU-ZISĂ ====================
-            print(f"📥 ÎNCEPE DESCĂRCAREA pentru {url}...")
+            print(f" ÎNCEPE DESCĂRCAREA pentru {url}...")
             pages_done, limit_hit = self.save_all_pages_in_batches(resume_from=resume_from)
 
-            print(f"📊 REZULTAT DESCĂRCARE:")
-            print(f"   📄 Pagini descărcate: {pages_done}")
-            print(f"   📄 Total necesar: {total_pages}")
-            print(f"   🛑 Limită zilnică: {limit_hit}")
+            print(f" REZULTAT DESCĂRCARE:")
+            print(f"    Pagini descărcate: {pages_done}")
+            print(f"    Total necesar: {total_pages}")
+            print(f"    Limită zilnică: {limit_hit}")
+
+            if self.state.get("download_no_file_stop", False):
+                print(" OPRIRE DE SIGURANTA: Save-uri fara PDF pe HDD. Nu mai fac recuperari sau download-uri noi.")
+                return False
 
             if pages_done == 0 and not limit_hit:
-                print(f"⚠ Descărcarea pentru {url} a eșuat complet.")
+                print(f" Descărcarea pentru {url} a eșuat complet.")
                 return False
 
             # ==================== VERIFICARE SEGMENTE LIPSĂ ====================
-            # 🔥 VERIFICARE OBLIGATORIE - chiar dacă a fost limită/CAPTCHA
+            #  VERIFICARE OBLIGATORIE - chiar dacă a fost limită/CAPTCHA
             if total_pages > 0:
-                print(f"\n🔍 VERIFICARE COMPLETITUDINE: Scanez după segmente lipsă...")
+                print(f"\n VERIFICARE COMPLETITUDINE: Scanez după segmente lipsă...")
                 print(f"   (Această verificare se face ÎNTOTDEAUNA, indiferent de limită/CAPTCHA)")
 
                 all_present, missing_segments = self.verify_all_segments_present(normalized_url, total_pages)
 
                 if not all_present:
-                    print(f"🚨 GĂURI DETECTATE: {len(missing_segments)} segmente lipsă!")
+                    print(f" GĂURI DETECTATE: {len(missing_segments)} segmente lipsă!")
                     for start, end in missing_segments:
-                        print(f"   📄 LIPSEȘTE: pages{start}-{end}")
+                        print(f"    LIPSEȘTE: pages{start}-{end}")
 
                     # Dacă a fost limită zilnică, NU încerca să recuperezi acum
                     if limit_hit:
-                        print(f"⚠️ LIMITĂ ZILNICĂ atinsă - nu pot recupera segmentele lipsă ACUM")
-                        print(f"🔄 Segmentele lipsă vor fi re-descărcate la următoarea rulare")
-                        print(f"🛡️ BLOCHEZ marcarea ca terminat - issue rămâne PARȚIAL")
+                        print(f" LIMITĂ ZILNICĂ atinsă - nu pot recupera segmentele lipsă ACUM")
+                        print(f" Segmentele lipsă vor fi re-descărcate la următoarea rulare")
+                        print(f" BLOCHEZ marcarea ca terminat - issue rămâne PARȚIAL")
 
                         # Actualizează progresul ca parțial
                         self._update_partial_issue_progress(
@@ -6952,19 +7660,19 @@ class ChromePDFDownloader:
                         )
                         return False
 
-                    print(f"🔄 RECUPERARE AUTOMATĂ: Descarc segmentele lipsă...")
+                    print(f" RECUPERARE AUTOMATĂ: Descarc segmentele lipsă...")
                     recovery_success = self.download_missing_segments(normalized_url, missing_segments)
 
                     if recovery_success:
-                        print(f"✅ RECUPERARE REUȘITĂ!")
+                        print(f" RECUPERARE REUȘITĂ!")
 
                         # Re-verifică
                         all_present_2, missing_2 = self.verify_all_segments_present(normalized_url, total_pages)
                         if not all_present_2:
-                            print(f"❌ Încă lipsesc {len(missing_2)} segmente după recuperare!")
+                            print(f" Încă lipsesc {len(missing_2)} segmente după recuperare!")
                             for start, end in missing_2[:5]:  # Afișează primele 5
-                                print(f"   📄 LIPSEȘTE: pages{start}-{end}")
-                            print(f"🛡️ BLOCHEZ marcarea ca terminat")
+                                print(f"    LIPSEȘTE: pages{start}-{end}")
+                            print(f" BLOCHEZ marcarea ca terminat")
 
                             # Marchează ca parțial pentru reluare
                             self._update_partial_issue_progress(
@@ -6972,22 +7680,22 @@ class ChromePDFDownloader:
                             )
                             return False
 
-                        # 🔥 CRITICAL FIX: Actualizează pages_done cu progresul REAL de pe disk după recuperare!
-                        print(f"🔄 ACTUALIZARE: Scanez disk-ul pentru progres REAL după recuperare...")
+                        #  CRITICAL FIX: Actualizează pages_done cu progresul REAL de pe disk după recuperare!
+                        print(f" ACTUALIZARE: Scanez disk-ul pentru progres REAL după recuperare...")
                         final_segments_after_recovery = self.get_all_pdf_segments_for_issue_anywhere(normalized_url, title)
                         if final_segments_after_recovery:
                             real_progress_after_recovery = self.calculate_consecutive_progress_from_segments(final_segments_after_recovery, total_pages)
-                            print(f"📊 Progres REAL după recuperare: {real_progress_after_recovery}/{total_pages}")
+                            print(f" Progres REAL după recuperare: {real_progress_after_recovery}/{total_pages}")
 
-                            # 🔥 ACTUALIZEAZĂ pages_done cu valoarea REALĂ!
+                            #  ACTUALIZEAZĂ pages_done cu valoarea REALĂ!
                             pages_done = real_progress_after_recovery
-                            print(f"✅ pages_done actualizat: {pages_done} pagini")
+                            print(f" pages_done actualizat: {pages_done} pagini")
                         else:
-                            print(f"⚠️ Nu am găsit segmente pe disk după recuperare!")
+                            print(f" Nu am găsit segmente pe disk după recuperare!")
                             return False
                     else:
-                        print(f"❌ RECUPERARE EȘUATĂ")
-                        print(f"🛡️ BLOCHEZ marcarea ca terminat")
+                        print(f" RECUPERARE EȘUATĂ")
+                        print(f" BLOCHEZ marcarea ca terminat")
 
                         # Marchează ca parțial pentru reluare
                         self._update_partial_issue_progress(
@@ -6995,22 +7703,22 @@ class ChromePDFDownloader:
                         )
                         return False
                 else:
-                    print(f"✅ TOATE segmentele sunt prezente - nicio gaură!")
+                    print(f" TOATE segmentele sunt prezente - nicio gaură!")
 
             if limit_hit:
-                print(f"⚠ Limită zilnică atinsă în timpul descărcării pentru {url}; progresul parțial a fost salvat.")
+                print(f" Limită zilnică atinsă în timpul descărcării pentru {url}; progresul parțial a fost salvat.")
                 return False
 
             # ==================== VERIFICĂRI ULTRA SAFE ÎNAINTE DE FINALIZARE ====================
 
-            print(f"🔍 VERIFICĂRI FINALE ULTRA SAFE pentru {url}...")
-            print(f"📊 Rezultat descărcare: {pages_done} pagini din {total_pages}")
+            print(f" VERIFICĂRI FINALE ULTRA SAFE pentru {url}...")
+            print(f" Rezultat descărcare: {pages_done} pagini din {total_pages}")
 
             # Verifică dacă total_pages a fost detectat corect
             if total_pages <= 0:
-                print(f"❌ OPRIRE SAFETY: total_pages nu a fost detectat corect ({total_pages})")
-                print(f"🛡️ NU marchez ca terminat fără total_pages valid")
-                print(f"🔄 Păstrez ca parțial cu progres {pages_done}")
+                print(f" OPRIRE SAFETY: total_pages nu a fost detectat corect ({total_pages})")
+                print(f" NU marchez ca terminat fără total_pages valid")
+                print(f" Păstrez ca parțial cu progres {pages_done}")
 
                 self._update_partial_issue_progress(
                     normalized_url, pages_done, total_pages=None, title=title, subtitle=subtitle
@@ -7019,28 +7727,28 @@ class ChromePDFDownloader:
 
             # VERIFICARE CRITICĂ: Progresul trebuie să fie aproape complet
             completion_percent = (pages_done / total_pages) * 100
-            print(f"📊 Completitudine calculată: {completion_percent:.1f}%")
+            print(f" Completitudine calculată: {completion_percent:.1f}%")
 
             if completion_percent < 95:  # Cel puțin 95%
-                print(f"❌ BLOCARE SAFETY: Progres insuficient pentru marcare ca terminat")
-                print(f"📊 Progres: {pages_done}/{total_pages} ({completion_percent:.1f}%)")
-                print(f"🛡️ Trebuie cel puțin 95% pentru a marca ca terminat!")
-                print(f"🔄 Păstrez ca PARȚIAL pentru continuare ulterioară")
+                print(f" BLOCARE SAFETY: Progres insuficient pentru marcare ca terminat")
+                print(f" Progres: {pages_done}/{total_pages} ({completion_percent:.1f}%)")
+                print(f" Trebuie cel puțin 95% pentru a marca ca terminat!")
+                print(f" Păstrez ca PARȚIAL pentru continuare ulterioară")
 
                 # Marchează ca parțial, NU ca terminat
                 self._update_partial_issue_progress(
                     normalized_url, pages_done, total_pages=total_pages, title=title, subtitle=subtitle
                 )
 
-                print(f"💾 Issue {url} păstrat ca parțial: {pages_done}/{total_pages}")
-                print(f"🔄 Va fi continuat automat la următoarea rulare")
+                print(f" Issue {url} păstrat ca parțial: {pages_done}/{total_pages}")
+                print(f" Va fi continuat automat la următoarea rulare")
                 return True  # Succes parțial - va continua mai târziu
 
             # VERIFICARE SUPLIMENTARĂ: Issues mari cu progres mic
             if total_pages >= 500 and pages_done < 200:
-                print(f"❌ BLOCARE SPECIALĂ: Issue mare cu progres suspect de mic")
-                print(f"📊 {pages_done} pagini din {total_pages} pare eșec de descărcare!")
-                print(f"🛡️ Probabil eroare tehnică sau limită - NU marchez terminat")
+                print(f" BLOCARE SPECIALĂ: Issue mare cu progres suspect de mic")
+                print(f" {pages_done} pagini din {total_pages} pare eșec de descărcare!")
+                print(f" Probabil eroare tehnică sau limită - NU marchez terminat")
 
                 self._update_partial_issue_progress(
                     normalized_url, pages_done, total_pages=total_pages, title=title, subtitle=subtitle
@@ -7049,38 +7757,38 @@ class ChromePDFDownloader:
 
             # ===== VERIFICARE ULTRA-CRITICĂ FINALĂ: SCANEAZĂ DISK-UL ÎNAINTE DE MARCARE =====
 
-            print(f"\n🔍 VERIFICARE ULTRA-CRITICĂ FINALĂ: Scanez disk-ul pentru progres EFECTIV ÎNAINTE de marcare...")
-            print("⏳ SINCRONIZARE: Aștept 30 secunde ca toate fișierele să fie complet salvate pe disk...")
+            print(f"\n VERIFICARE ULTRA-CRITICĂ FINALĂ: Scanez disk-ul pentru progres EFECTIV ÎNAINTE de marcare...")
+            print("SINCRONIZARE: Aștept 30 secunde ca toate fișierele să fie complet salvate pe disk...")
             time.sleep(30)
 
             final_segments_check = self.get_all_pdf_segments_for_issue_anywhere(url, title)
 
             if not final_segments_check:
-                print(f"❌ PROBLEMĂ GRAVĂ: Nu am găsit NICIUN segment pe disk!")
-                print(f"🛡️ BLOCHEZ marcarea ca terminat - ceva s-a întâmplat grav!")
+                print(f" PROBLEMĂ GRAVĂ: Nu am găsit NICIUN segment pe disk!")
+                print(f" BLOCHEZ marcarea ca terminat - ceva s-a întâmplat grav!")
                 return False
 
             # Calculează progresul REAL de pe disk
             real_final_page = self.calculate_consecutive_progress_from_segments(final_segments_check, total_pages)
 
-            print(f"📊 PROGRES REAL DE PE DISK: {real_final_page}/{total_pages}")
-            print(f"📄 Segmente găsite: {len(final_segments_check)}")
+            print(f" PROGRES REAL DE PE DISK: {real_final_page}/{total_pages}")
+            print(f" Segmente găsite: {len(final_segments_check)}")
 
             # Verifică dacă progresul REAL este suficient
             real_completion_percent = (real_final_page / total_pages) * 100 if total_pages > 0 else 0
 
             if real_completion_percent < 95:
-                print(f"❌ BLOCARE SAFETY: Progresul REAL de pe disk este prea mic!")
-                print(f"📊 Progres REAL: {real_final_page}/{total_pages} ({real_completion_percent:.1f}%)")
-                print(f"🛡️ pages_done din descărcare zicea {pages_done}, dar disk-ul arată {real_final_page}")
-                print(f"🔄 Marchează ca PARȚIAL pentru continuare ulterioară")
+                print(f" BLOCARE SAFETY: Progresul REAL de pe disk este prea mic!")
+                print(f" Progres REAL: {real_final_page}/{total_pages} ({real_completion_percent:.1f}%)")
+                print(f" pages_done din descărcare zicea {pages_done}, dar disk-ul arată {real_final_page}")
+                print(f" Marchează ca PARȚIAL pentru continuare ulterioară")
 
                 # Actualizează cu progresul REAL
                 self._update_partial_issue_progress(
                     normalized_url, real_final_page, total_pages=total_pages, title=title, subtitle=subtitle
                 )
 
-                print(f"💾 Issue {url} păstrat ca parțial cu progres REAL: {real_final_page}/{total_pages}")
+                print(f" Issue {url} păstrat ca parțial cu progres REAL: {real_final_page}/{total_pages}")
                 return True  # Succes parțial
 
             # Identifică și afișează găurile
@@ -7106,13 +7814,13 @@ class ChromePDFDownloader:
                     missing_segments_final.append((expected_start, expected_end))
 
             if missing_segments_final:
-                print(f"⚠️ GĂURI DETECTATE în verificarea finală: {len(missing_segments_final)} segmente!")
+                print(f" GĂURI DETECTATE în verificarea finală: {len(missing_segments_final)} segmente!")
                 for start, end in missing_segments_final[:5]:
-                    print(f"   ❌ LIPSEȘTE: pages{start}-{end}")
+                    print(f"    LIPSEȘTE: pages{start}-{end}")
                 if len(missing_segments_final) > 5:
                     print(f"   ... și încă {len(missing_segments_final) - 5} segmente")
 
-                print(f"🛡️ BLOCHEZ marcarea ca terminat din cauza găurilor!")
+                print(f" BLOCHEZ marcarea ca terminat din cauza găurilor!")
 
                 # Marchează ca parțial cu progresul real
                 self._update_partial_issue_progress(
@@ -7124,13 +7832,13 @@ class ChromePDFDownloader:
             # ACTUALIZEAZĂ pages_done cu valoarea REALĂ de pe disk
             pages_done = real_final_page
 
-            print(f"✅ VERIFICARE OK: Toate segmentele sunt prezente pe disk!")
-            print(f"📊 Progres CONFIRMAT: {pages_done}/{total_pages} ({real_completion_percent:.1f}%)")
+            print(f" VERIFICARE OK: Toate segmentele sunt prezente pe disk!")
+            print(f" Progres CONFIRMAT: {pages_done}/{total_pages} ({real_completion_percent:.1f}%)")
 
             # ===== TOATE VERIFICĂRILE AU TRECUT - MARCHEAZĂ CA TERMINAT =====
-            print(f"\n✅ TOATE VERIFICĂRILE AU TRECUT pentru {url}")
-            print(f"🎯 Progres verificat pe disk: {pages_done}/{total_pages} ({real_completion_percent:.1f}%)")
-            print(f"🎯 MARCHEZ CA TERMINAT COMPLET în JSON")
+            print(f"\n TOATE VERIFICĂRILE AU TRECUT pentru {url}")
+            print(f" Progres verificat pe disk: {pages_done}/{total_pages} ({real_completion_percent:.1f}%)")
+            print(f" MARCHEZ CA TERMINAT COMPLET în JSON")
 
             # MARCHEAZĂ ISSUE CA TERMINAT
             self.queue_pending_pdf_finalization(
@@ -7148,61 +7856,61 @@ class ChromePDFDownloader:
 
             self.mark_issue_done(url, pages_done, title=title, subtitle=subtitle, total_pages=total_pages)
             self.clear_pending_pdf_finalization(url)
-            print(f"✅ Issue marcat ca terminat în JSON: {url} ({pages_done} pagini)")
+            print(f" Issue marcat ca terminat în JSON: {url} ({pages_done} pagini)")
 
             # PAUZĂ: Așteaptă ca JSON să fie salvat
-            print("⏳ SINCRONIZARE: Aștept 3 secunde pentru salvarea JSON...")
+            print("SINCRONIZARE: Aștept 3 secunde pentru salvarea JSON...")
             time.sleep(5)
 
             # ==================== PROCESAREA PDF-URILOR ====================
-            print(f"\n🔄 ÎNCEPE PROCESAREA PDF-URILOR pentru {url}...")
+            print(f"\n ÎNCEPE PROCESAREA PDF-URILOR pentru {url}...")
 
             # Verifică din nou că toate fișierele sunt pe disk
             final_segments = self.get_all_pdf_segments_for_issue_anywhere(url, title)
-            print(f"🔍 VERIFICARE: Am găsit {len(final_segments)} fișiere PDF pentru acest issue")
+            print(f" VERIFICARE: Am găsit {len(final_segments)} fișiere PDF pentru acest issue")
 
             if len(final_segments) == 0 and not self.issue_final_pdf_exists(url, title or normalized_url):
-                print(f"⚠ PROBLEMĂ: Nu am găsit fișiere PDF pentru {url}!")
+                print(f" PROBLEMĂ: Nu am găsit fișiere PDF pentru {url}!")
                 return False
 
             # Copiază și combină PDF-urile
-            print(f"📦 Copiez și combin toate PDF-urile...")
+            print(f" Copiez și combin toate PDF-urile...")
             self.copy_and_combine_issue_pdfs(url, title or normalized_url)
-            print(f"✅ PDF-urile au fost copiate și combinate cu succes!")
+            print(f" PDF-urile au fost copiate și combinate cu succes!")
 
             # PAUZĂ CRITICĂ 3: Așteaptă ca procesarea PDF să fie completă
-            print("⏳ SINCRONIZARE: Aștept 8 secunde după procesarea PDF-urilor...")
+            print("SINCRONIZARE: Aștept 8 secunde după procesarea PDF-urilor...")
             time.sleep(8)
 
             # ==================== FINALIZARE COMPLETĂ ====================
             print("=" * 60)
-            print(f"🎉 FOCUSAREA COMPLETĂ PE {url} FINALIZATĂ CU SUCCES!")
-            print(f"📊 REZULTAT: {pages_done} pagini descărcate și procesate")
+            print(f" FOCUSAREA COMPLETĂ PE {url} FINALIZATĂ CU SUCCES!")
+            print(f" REZULTAT: {pages_done} pagini descărcate și procesate")
             print("=" * 60)
 
             # IMPORTANT: Închide Firefox după finalizarea issue-ului pentru a evita pop-up-uri
-            print("🔄 Închid Firefox după finalizarea issue-ului pentru a evita pop-up-uri...")
+            print(" Închid Firefox după finalizarea issue-ului pentru a evita pop-up-uri...")
             try:
                 if hasattr(self, 'driver') and self.driver:
                     self.driver.quit()
                     self.driver = None
                     self.wait = None
-                    print("✅ Firefox închis cu succes")
+                    print(" Firefox închis cu succes")
                     time.sleep(2)
             except Exception as e:
-                print(f"⚠ Eroare la închiderea Firefox: {e}")
+                print(f" Eroare la închiderea Firefox: {e}")
 
             # PAUZĂ FINALĂ: Înainte să treacă la următorul issue
-            print("⏳ PAUZĂ FINALĂ: 5 secunde înainte de următorul issue...")
+            print("PAUZĂ FINALĂ: 5 secunde înainte de următorul issue...")
             time.sleep(5)
 
             return True
 
         except WebDriverException as e:
-            print(f"❌ Eroare WebDriver pentru {url}: {e}")
+            print(f" Eroare WebDriver pentru {url}: {e}")
             return False
         except Exception as e:
-            print(f"❌ Eroare în open_new_tab_and_download pentru {url}: {e}")
+            print(f" Eroare în open_new_tab_and_download pentru {url}: {e}")
             return False
         finally:
             try:
@@ -7218,7 +7926,7 @@ class ChromePDFDownloader:
                     if driver.window_handles:
                         driver.switch_to.window(driver.window_handles[0])
             except Exception as e:
-                print(f"⚠ Eroare în finally: {e}")
+                print(f" Eroare în finally: {e}")
                 pass
 
     def ensure_alive_fallback(self):
@@ -7226,10 +7934,10 @@ class ChromePDFDownloader:
         try:
             _ = self.driver.title
         except Exception as e:
-            print(f"⚠ Conexiune WebDriver moartă ({e}), repornesc Firefox...")
+            print(f" Conexiune WebDriver moartă ({e}), repornesc Firefox...")
             # Folosește aceeași metodă ca setup_firefox_driver() pentru consistență
             if not self.setup_firefox_driver():
-                print("❌ Nu am putut reporni Firefox în ensure_alive_fallback!")
+                print(" Nu am putut reporni Firefox în ensure_alive_fallback!")
                 raise Exception("Firefox nu poate fi repornit")
 
     def run_collection(self, collection_url):
@@ -7237,25 +7945,25 @@ class ChromePDFDownloader:
         Suportă și URL-uri directe de tip /view/ (issue individual) — în acest caz
         sare peste extract_issue_links_from_collection și descarcă issue-ul direct.
         """
-        print(f"🌐 Încep procesarea colecției: {collection_url}")
+        print(f" Încep procesarea colecției: {collection_url}")
 
         # === REINIȚIALIZARE AUTOMATĂ FIREFOX DACĂ E ÎNCHIS ===
         if not self.driver:
-            print("⚠️ Driver neinițializat - reinițializez Firefox automat...")
+            print(" Driver neinițializat - reinițializez Firefox automat...")
             if not self.setup_firefox_driver():
-                print("❌ Nu am putut reinițializa Firefox!")
+                print(" Nu am putut reinițializa Firefox!")
                 return False
-            print("✅ Firefox reinițializat cu succes!")
+            print(" Firefox reinițializat cu succes!")
 
         # === URL DIRECT DE ISSUE (/view/) - procesez ca issue unic ===
         if '/view/' in collection_url:
             normalized = collection_url.split('?')[0].rstrip('/')
-            print(f"🎯 URL direct de issue (view) detectat - procesez ca issue unic")
-            print(f"   📍 {normalized}")
+            print(f" URL direct de issue (view) detectat - procesez ca issue unic")
+            print(f"    {normalized}")
 
             # Skip dacă deja complet în skip list
-            if normalized in self.dynamic_skip_urls and (not self.find_issue_state_item(normalized) or self.is_issue_really_complete(self.find_issue_state_item(normalized))):
-                print(f"⏭️ Issue deja complet (în skip_urls.json) - sar peste")
+            if normalized in self.dynamic_skip_urls and self._skip_url_is_verified_complete(normalized):
+                print(f"Issue deja complet (în skip_urls.json) - sar peste")
                 return True
 
             # Verifică dacă e deja complet în state.json
@@ -7265,24 +7973,24 @@ class ChromePDFDownloader:
                 None
             )
             if issue_item and self.is_issue_really_complete(issue_item):
-                print(f"✅ Issue deja complet în state.json - sar peste")
+                print(f" Issue deja complet în state.json - sar peste")
                 return True
 
             # Verifică cota zilnică
             if self.state.get("daily_limit_hit", False):
-                print("⚠ Limită zilnică atinsă anterior - opresc")
+                print(" Limită zilnică atinsă anterior - opresc")
                 return False
             if self.remaining_quota() <= 0:
-                print(f"⚠ Limita zilnică de {DAILY_LIMIT} issue-uri atinsă")
+                print(f" Limita zilnică de {DAILY_LIMIT} issue-uri atinsă")
                 return False
 
             # Descarcă issue-ul
             result = self.open_new_tab_and_download(normalized)
             if result:
-                print(f"✅ Issue descărcat cu succes: {normalized}")
+                print(f" Issue descărcat cu succes: {normalized}")
                 return True
             else:
-                print(f"⚠ Issue-ul nu a fost descărcat complet - va fi reluat")
+                print(f" Issue-ul nu a fost descărcat complet - va fi reluat")
                 return False
         # === END URL DIRECT ===
 
@@ -7290,32 +7998,32 @@ class ChromePDFDownloader:
             return False
 
         if self.detect_login_required():
-            print("🔐 Colectia arata linkuri Conectare/Abonare - fac login inainte sa scanez issue-urile.")
+            print(" Colectia arata linkuri Conectare/Abonare - fac login inainte sa scanez issue-urile.")
             if not self.perform_auto_login():
-                print("❌ Login automat esuat pe pagina de colectie; nu continui cu file/download-uri noi.")
+                print(" Login automat esuat pe pagina de colectie; nu continui cu file/download-uri noi.")
                 return False
-            print("🔄 Login reusit; revin la colectia de unde am ramas.")
+            print(" Login reusit; revin la colectia de unde am ramas.")
             if not self.navigate_to_page(collection_url):
-                print(f"❌ Nu pot reveni la colectie dupa login: {collection_url}")
+                print(f" Nu pot reveni la colectie dupa login: {collection_url}")
                 return False
             time.sleep(3)
 
         # Verifică limita DOAR la început
         if self.state.get("daily_limit_hit", False):
-            print("⚠ Nu mai pot continua din cauza limitei zilnice setate anterior.")
+            print(" Nu mai pot continua din cauza limitei zilnice setate anterior.")
             return False  # SCHIMBAT din True în False
 
         if self.remaining_quota() <= 0:
-            print(f"⚠ Limita zilnică de {DAILY_LIMIT} issue-uri atinsă.")
+            print(f" Limita zilnică de {DAILY_LIMIT} issue-uri atinsă.")
             return False  # SCHIMBAT din True în False
 
         issue_links = self.extract_issue_links_from_collection()
         if not issue_links:
-            print("⚠ Nu s-au găsit issue-uri în colecție.")
+            print(" Nu s-au găsit issue-uri în colecție.")
             return False
 
         # === VERIFICARE CRITICĂ: Scanează TOATE issue-urile din colecție (SILENȚIOS pentru skip) ===
-        print(f"\n🔍 VERIFICARE COMPLETITUDINE COLECȚIE:")
+        print(f"\n VERIFICARE COMPLETITUDINE COLECȚIE:")
 
         incomplete_issues = []
         complete_count = 0
@@ -7325,21 +8033,17 @@ class ChromePDFDownloader:
             normalized = link.rstrip('/')
 
             # SKIP SILENȚIOS dacă e în skip list
-            if normalized in self.dynamic_skip_urls and (not self.find_issue_state_item(normalized) or self.is_issue_really_complete(self.find_issue_state_item(normalized))):
+            if normalized in self.dynamic_skip_urls and self._skip_url_is_verified_complete(normalized):
                 skipped_count += 1
                 continue
 
             # Verifică în state.json
-            issue_item = next(
-                (i for i in self.state.get("downloaded_issues", [])
-                 if i.get("url") == normalized),
-                None
-            )
+            issue_item = self.find_issue_state_item(normalized)
 
             if not issue_item:
                 # Issue nou - trebuie descărcat
                 incomplete_issues.append(link)
-                print(f"   🆕 NOU: {link}")
+                print(f"    NOU: {link}")
                 continue
 
             # Verifică dacă e REAL complet
@@ -7354,87 +8058,106 @@ class ChromePDFDownloader:
                 total_pages = issue_item.get("total_pages", "?")
                 pages = issue_item.get("pages", 0)
 
-                print(f"   ❌ INCOMPLET: {link}")
+                print(f"    INCOMPLET: {link}")
                 print(f"      pages: {pages}, last_segment: {last_segment}, total: {total_pages}")
 
         # === RAPORT COLECȚIE (DUPĂ SCANAREA TUTUROR ISSUE-URILOR) ===
-        print(f"\n📊 RAPORT COLECȚIE:")
+        print(f"\n RAPORT COLECȚIE:")
         print(f"   Total issues: {len(issue_links)}")
-        print(f"   ⏭️ Skip (în skip_urls.json): {skipped_count}")
-        print(f"   ✅ Complete: {complete_count}")
-        print(f"   ❌ Incomplete: {len(incomplete_issues)}")
+        print(f"   Skip (în skip_urls.json): {skipped_count}")
+        print(f"    Complete: {complete_count}")
+        print(f"    Incomplete: {len(incomplete_issues)}")
 
         # === DACĂ NU E NIMIC DE PROCESAT, COLECȚIA E COMPLETĂ ===
         if len(incomplete_issues) == 0:
-            print(f"✅ COLECȚIA {collection_url} ESTE COMPLETĂ!")
+            print(f" COLECȚIA {collection_url} ESTE COMPLETĂ!")
             print(f"   Toate {len(issue_links)} issue-uri sunt complete")
             return True
 
         # === ÎNAINTE DE A PROCESA ISSUE-URI INCOMPLETE: Finalizează issue-uri complet descărcate dar nefinalizate ===
-        print(f"\n🔍 VERIFICARE PRIORITARĂ: Caut issue-uri complet descărcate dar nefinalizate din această colecție...")
+        print(f"\n VERIFICARE PRIORITARĂ: Caut issue-uri complet descărcate dar nefinalizate din această colecție...")
 
         # Apelează procesarea issue-urilor nefinalizate pentru această colecție
         if not self.process_completed_but_unfinalized_issues(candidate_urls=issue_links):
             print("ERROR: Exista un merge restant nerezolvat. Nu continui cu issue-uri/colectii noi.")
             return False
 
-        print(f"✅ Verificare completă - continuez cu issue-urile incomplete")
+        print(f" Verificare completă - continuez cu issue-urile incomplete")
 
         # === PROCESEAZĂ ISSUE-URILE INCOMPLETE ===
-        print(f"\n🎯 PROCESEZ {len(incomplete_issues)} issue-uri incomplete:")
+        print(f"\n PROCESEZ {len(incomplete_issues)} issue-uri incomplete:")
 
         processed_any = False
         for i, link in enumerate(incomplete_issues):
-            print(f"\n🔢 ISSUE {i+1}/{len(incomplete_issues)}: {link}")
+            print(f"\n ISSUE {i+1}/{len(incomplete_issues)}: {link}")
+            normalized_link = link.split("?")[0].rstrip("/")
+            latest_item = self.find_issue_state_item(normalized_link)
+
+            if normalized_link in self.dynamic_skip_urls and self._skip_url_is_verified_complete(normalized_link):
+                print(f"Issue a devenit complet/skip între timp - sar peste: {normalized_link}")
+                continue
+
+            if latest_item and self.is_issue_really_complete(latest_item):
+                print(f"Issue deja complet în state.json la re-verificare - sar peste: {normalized_link}")
+                self.dynamic_skip_urls.add(normalized_link)
+                self._save_skip_urls()
+                continue
 
             # Verifică cota
+            if self.state.get("download_no_file_stop", False):
+                print(" Oprire de siguranta activa: Save fara PDF confirmat pe HDD.")
+                return False
+
             if self.remaining_quota() <= 0:
-                print(f"⚠ Limită zilnică atinsă - opresc procesarea")
+                print(f" Limită zilnică atinsă - opresc procesarea")
                 return False  # Returnează FALSE ca să nu marcheze colecția ca completă
 
             if self.state.get("daily_limit_hit", False):
-                print("⚠ Flag daily_limit_hit setat - opresc procesarea")
+                print(" Flag daily_limit_hit setat - opresc procesarea")
                 return False
 
             # Procesează issue-ul
             result = self.open_new_tab_and_download(link)
+            if not result:
+                print(f"WARNING: Issue-ul {link} nu a fost procesat; opresc colectia ca sa fie reluat.")
+                return False
 
             if result:
                 processed_any = True
-                print(f"✅ Issue-ul {link} procesat cu succes!")
+                print(f" Issue-ul {link} procesat cu succes!")
             else:
-                print(f"⚠ Issue-ul {link} nu a fost procesat")
+                print(f" Issue-ul {link} nu a fost procesat")
+
+            if self.state.get("download_no_file_stop", False):
+                print(" Oprire de siguranta dupa issue: nu trec la alt issue/colectie.")
+                return False
 
             # Verifică din nou cota
             if self.remaining_quota() <= 0 or self.state.get("daily_limit_hit", False):
-                print("⚠ Limită zilnică atinsă - opresc procesarea")
+                print(" Limită zilnică atinsă - opresc procesarea")
                 return False
 
             # Pauză între issue-uri
             if i < len(incomplete_issues) - 1:
-                print("⏳ Pauză de 2s între issue-uri...")
+                print("Pauză de 2s între issue-uri...")
                 time.sleep(2)
 
         # === RE-VERIFICARE FINALĂ ===
-        print(f"\n🔍 RE-VERIFICARE FINALĂ după procesare:")
+        print(f"\n RE-VERIFICARE FINALĂ după procesare:")
 
         still_incomplete = []
         for link in issue_links:
             normalized = link.rstrip('/')
-            issue_item = next(
-                (i for i in self.state.get("downloaded_issues", [])
-                 if i.get("url") == normalized),
-                None
-            )
+            issue_item = self.find_issue_state_item(normalized)
 
             if not issue_item or not self.is_issue_really_complete(issue_item):
                 still_incomplete.append(link)
 
         if len(still_incomplete) == 0:
-            print(f"✅ COLECȚIA {collection_url} ESTE ACUM COMPLETĂ!")
+            print(f" COLECȚIA {collection_url} ESTE ACUM COMPLETĂ!")
             return True
         else:
-            print(f"⚠ COLECȚIA {collection_url} ÎNCĂ ARE {len(still_incomplete)} issue-uri incomplete")
+            print(f" COLECȚIA {collection_url} ÎNCĂ ARE {len(still_incomplete)} issue-uri incomplete")
             print(f"   Va fi reluată la următoarea rulare")
             return False
 
@@ -7443,54 +8166,65 @@ class ChromePDFDownloader:
         pending_partials = self.get_pending_partial_issues()
 
         if not pending_partials:
-            print("✅ Nu există issue-uri parțiale de procesat.")
+            print(" Nu există issue-uri parțiale de procesat.")
             return True
 
-        print(f"\n🎯 PRIORITATE: Procesez {len(pending_partials)} issue-uri parțiale:")
+        print(f"\n PRIORITATE: Procesez {len(pending_partials)} issue-uri parțiale:")
         for item in pending_partials:
             url = item.get("url")
             progress = item.get("last_successful_segment_end", 0)
             total = item.get("total_pages", 0)
-            print(f"   🔄 {url} - pagini {progress}/{total}")
+            print(f"    {url} - pagini {progress}/{total}")
 
         # Procesează issue-urile parțiale
         processed_any = False
         for item in pending_partials:
+            if self.state.get("download_no_file_stop", False):
+                print(" Oprire de siguranta activa: Save fara PDF confirmat pe HDD.")
+                return False
+
             if self.remaining_quota() <= 0 or self.state.get("daily_limit_hit", False):
-                print(f"⚠ Limita zilnică atinsă în timpul issue-urilor parțiale.")
+                print(f" Limita zilnică atinsă în timpul issue-urilor parțiale.")
                 break
 
             url = item.get("url")
             result = self.open_new_tab_and_download(url)
             if result:
                 processed_any = True
+            if self.state.get("download_no_file_stop", False):
+                print(" Oprire de siguranta dupa partial: nu continui.")
+                return False
             time.sleep(1)
 
         return processed_any
 
     def run_additional_collections(self):
         """FIXED: Nu sare la următoarea colecție dacă cea curentă nu e completă"""
-        start_index = self.state.get("current_additional_collection_index", 0)
+        start_index = self.enforce_additional_collections_order()
 
         if start_index >= len(ADDITIONAL_COLLECTIONS):
-            print("✅ TOATE colecțiile adiționale au fost procesate!")
+            print(" TOATE colecțiile adiționale au fost procesate!")
             return True
 
-        print(f"🔄 Continuez cu colecțiile adiționale de la indexul {start_index}")
+        print(f" Continuez cu colecțiile adiționale de la indexul {start_index}")
 
         for i in range(start_index, len(ADDITIONAL_COLLECTIONS)):
             collection_url = ADDITIONAL_COLLECTIONS[i]
 
-            print(f"\n📚 COLECȚIA {i+1}/{len(ADDITIONAL_COLLECTIONS)}: {collection_url}")
+            print(f"\n COLECȚIA {i+1}/{len(ADDITIONAL_COLLECTIONS)}: {collection_url}")
+
+            if self.state.get("download_no_file_stop", False):
+                print(" Oprire de siguranta activa: nu trec la alta colectie.")
+                return False
 
             if collection_url.rstrip('/') in self.dynamic_skip_urls:
-                print(f"⏭️ Skip colecția (deja completă)")
+                print(f"Skip colecția (deja completă)")
                 self.state["current_additional_collection_index"] = i + 1
                 self._save_state()
                 continue
 
             if self.remaining_quota() <= 0 or self.state.get("daily_limit_hit", False):
-                print(f"⚠ Limită zilnică - opresc procesarea")
+                print(f" Limită zilnică - opresc procesarea")
                 return False  # SCHIMBAT
 
             # Setează indexul ÎNAINTE de procesare
@@ -7506,24 +8240,24 @@ class ChromePDFDownloader:
                     return False
 
                 # DOAR dacă e REAL completă
-                print(f"✅ Colecția {i+1} COMPLETĂ - trec la următoarea")
+                print(f" Colecția {i+1} COMPLETĂ - trec la următoarea")
                 self.mark_collection_complete(collection_url)
                 self.state["current_additional_collection_index"] = i + 1
                 self._save_state()
             else:
                 # NU e completă - oprește aici
-                print(f"⚠ Colecția {i+1} NU e completă - rămân aici")
-                print(f"🔄 Va continua cu aceeași colecție la următoarea rulare")
+                print(f" Colecția {i+1} NU e completă - rămân aici")
+                print(f" Va continua cu aceeași colecție la următoarea rulare")
                 return False  # OPREȘTE - nu trece la următoarea
 
             if self.state.get("daily_limit_hit", False):
                 return False
 
-        print("🎉 TOATE colecțiile au fost procesate!")
+        print(" TOATE colecțiile au fost procesate!")
         return True
 
     def run(self):
-        print("🧪 Încep executarea Chrome PDF Downloader FIXED")
+        print(" Încep executarea Chrome PDF Downloader FIXED")
         print("=" * 60)
 
         try:
@@ -7540,20 +8274,23 @@ class ChromePDFDownloader:
             )
             if startup_url:
                 try:
-                    print(f"\n🌐 Deschid imediat URL-ul prioritar: {startup_url}")
+                    print(f"\n Deschid imediat URL-ul prioritar: {startup_url}")
                     self.driver.get(startup_url)
-                    print(f"✅ Firefox a accesat: {self.driver.current_url}")
+                    self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'body')))
+                    time.sleep(1)
+                    self.close_other_tabs_keep_current("pornire")
+                    print(f" Firefox a accesat: {self.driver.current_url}")
                 except Exception as startup_error:
-                    print(f"⚠ Nu am putut deschide URL-ul initial: {startup_error}")
+                    print(f" Nu am putut deschide URL-ul initial: {startup_error}")
 
-            # 🚨 VERIFICARE CAPTCHA DIN RULAREA ANTERIOARĂ
+            #  VERIFICARE CAPTCHA DIN RULAREA ANTERIOARĂ
             if self.state.get("captcha_detected", False):
                 print(f"\n{'='*60}")
-                print(f"🚨 CAPTCHA DETECTAT ÎN RULAREA ANTERIOARĂ!")
+                print(f" CAPTCHA DETECTAT ÎN RULAREA ANTERIOARĂ!")
                 print(f"{'='*60}")
-                print(f"❌ Scriptul a fost oprit anterior din cauza CAPTCHA")
-                print(f"📋 URL CAPTCHA: {self.state.get('captcha_url', 'necunoscut')}")
-                print(f"⚠️  ACȚIUNE NECESARĂ:")
+                print(f" Scriptul a fost oprit anterior din cauza CAPTCHA")
+                print(f" URL CAPTCHA: {self.state.get('captcha_url', 'necunoscut')}")
+                print(f"  ACȚIUNE NECESARĂ:")
                 print(f"   1. Rezolvă CAPTCHA manual în browser")
                 print(f"   2. Șterge flag-ul din state.json:")
                 print(f"      \"captcha_detected\": false")
@@ -7561,13 +8298,13 @@ class ChromePDFDownloader:
                 print(f"{'='*60}\n")
                 return False
 
-            # 🛑 VERIFICARE MAINTENANCE_STOP DIN RULAREA ANTERIOARĂ
+            #  VERIFICARE MAINTENANCE_STOP DIN RULAREA ANTERIOARĂ
             if self.state.get("maintenance_stop", False):
                 print(f"\n{'='*60}")
-                print(f"🔧 VERIFICARE MAINTENANCE_STOP FLAG")
+                print(f" VERIFICARE MAINTENANCE_STOP FLAG")
                 print(f"{'='*60}")
-                print(f"⚠️ Scriptul a fost oprit anterior din cauza mentenanței")
-                print(f"🔍 Verific dacă site-ul Arcanum este din nou disponibil...")
+                print(f" Scriptul a fost oprit anterior din cauza mentenanței")
+                print(f" Verific dacă site-ul Arcanum este din nou disponibil...")
 
                 # Încearcă să acceseze site-ul
                 try:
@@ -7575,22 +8312,26 @@ class ChromePDFDownloader:
                     time.sleep(3)
 
                     if self.detect_403_maintenance():
-                        print(f"❌ Site-ul încă returnează 403 Forbidden")
-                        print(f"🛑 Mentenanța continuă - opresc scriptul")
-                        print(f"🔄 Repornește mai târziu când mentenanța se termină")
+                        print(f" Site-ul încă returnează 403 Forbidden")
+                        print(f" Mentenanța continuă - opresc scriptul")
+                        print(f" Repornește mai târziu când mentenanța se termină")
                         return False
                     else:
-                        print(f"✅ Site-ul Arcanum este din nou ONLINE!")
-                        print(f"🔄 Resetez flag-ul maintenance_stop și continui...")
+                        print(f" Site-ul Arcanum este din nou ONLINE!")
+                        print(f" Resetez flag-ul maintenance_stop și continui...")
                         self.state["maintenance_stop"] = False
                         self._save_state()
                 except Exception as e:
-                    print(f"❌ Eroare la verificarea site-ului: {e}")
-                    print(f"🛑 Opresc scriptul pentru siguranță")
+                    print(f" Eroare la verificarea site-ului: {e}")
+                    print(f" Opresc scriptul pentru siguranță")
                     return False
 
-            print("🔄 Resetez flag-ul de limită zilnică...")
-            self.state["daily_limit_hit"] = False
+            if self.state.get("daily_limit_hit", False):
+                print(" Limita zilnică este deja marcată pentru azi; nu o resetez la restart.")
+            elif self.state.get("download_no_file_stop", False):
+                print(" Oprirea de siguranță este deja marcată pentru azi; nu o resetez la restart.")
+            else:
+                print(" Nu există flag de limită/oprire de siguranță pentru azi.")
             self._save_state()
 
             # Sincronizare și cleanup
@@ -7605,11 +8346,11 @@ class ChromePDFDownloader:
             self.fix_incorrectly_marked_complete_issues()
 
             # === NOUĂ VERIFICARE: Corectează progresul bazat pe disk ===
-            print("\n🔍 VERIFICARE: Sincronizez progresul din JSON cu fișierele de pe disk...")
+            print("\n VERIFICARE: Sincronizez progresul din JSON cu fișierele de pe disk...")
             self.fix_progress_based_on_disk()
 
             if self.check_daily_limit_in_all_windows(set_flag=False):
-                print("⚠ Am găsit ferestre cu limita deschise - le închid...")
+                print(" Am găsit ferestre cu limita deschise - le închid...")
 
             # === BUCLĂ PRINCIPALĂ: Verifică MEREU issue-uri parțiale ===
             max_iterations = 100  # Prevenire buclă infinită
@@ -7618,116 +8359,135 @@ class ChromePDFDownloader:
             while iteration < max_iterations:
                 iteration += 1
                 print(f"\n{'='*60}")
-                print(f"🔄 ITERAȚIE {iteration}: Verificare priorități")
+                print(f" ITERAȚIE {iteration}: Verificare priorități")
                 print(f"{'='*60}")
 
-                # 🛑 VERIFICARE FLAG MAINTENANCE_STOP - OPRIRE COMPLETĂ
+                #  VERIFICARE FLAG MAINTENANCE_STOP - OPRIRE COMPLETĂ
                 if self.state.get("maintenance_stop", False):
                     print(f"\n{'='*60}")
-                    print(f"🛑 MAINTENANCE_STOP FLAG DETECTAT!")
+                    print(f" MAINTENANCE_STOP FLAG DETECTAT!")
                     print(f"{'='*60}")
-                    print(f"❌ Scriptul a fost oprit din cauza mentenanței prelungite")
-                    print(f"⚠️  Site-ul Arcanum era în mentenanță > 30 minute")
-                    print(f"🔄 Repornește scriptul mai târziu")
-                    print(f"💡 Pentru a reseta flag-ul, șterge 'maintenance_stop' din state.json")
+                    print(f" Scriptul a fost oprit din cauza mentenanței prelungite")
+                    print(f"  Site-ul Arcanum era în mentenanță > 30 minute")
+                    print(f" Repornește scriptul mai târziu")
+                    print(f" Pentru a reseta flag-ul, șterge 'maintenance_stop' din state.json")
                     # NU resetăm flag-ul automat - utilizatorul trebuie să îl reseteze manual
                     # sau scriptul îl va reseta la următoarea pornire dacă site-ul e OK
                     return False
 
                 # === PRIORITATE 0: Issue-uri complet descărcate dar nefinalizate (PRIORITATE MAXIMĂ!) ===
-                print(f"\n🔍 PRIORITATE 0: Verific issue-uri complet descărcate dar nefinalizate...")
+                print(f"\n PRIORITATE 0: Verific issue-uri complet descărcate dar nefinalizate...")
                 if not self.process_completed_but_unfinalized_issues():
                     print("ERROR: Exista un merge restant nerezolvat. Nu trec mai departe.")
                     return False
-                print(f"✅ Verificare issue-uri nefinalizate completă")
+                print(f" Verificare issue-uri nefinalizate completă")
 
                 # === PRIORITATE 1: Issue-uri parțiale (din ORICE colecție) ===
                 pending_partials = self.get_pending_partial_issues()
 
                 if pending_partials:
-                    print(f"\n🎯 PRIORITATE ABSOLUTĂ: {len(pending_partials)} issue-uri parțiale găsite")
+                    print(f"\n PRIORITATE ABSOLUTĂ: {len(pending_partials)} issue-uri parțiale găsite")
 
                     for idx, item in enumerate(pending_partials):
+                        if self.state.get("download_no_file_stop", False):
+                            print(" Oprire de siguranta activa: Save fara PDF confirmat pe HDD.")
+                            return False
+
                         if self.remaining_quota() <= 0 or self.state.get("daily_limit_hit", False):
-                            print("⚠ Limită zilnică atinsă")
+                            print(" Limită zilnică atinsă")
                             return True
 
                         url = item.get("url")
                         progress = item.get("last_successful_segment_end", 0)
                         total = item.get("total_pages", 0)
 
-                        print(f"\n🔄 PARȚIAL {idx+1}/{len(pending_partials)}: {url}")
+                        print(f"\n PARȚIAL {idx+1}/{len(pending_partials)}: {url}")
                         print(f"   Progres: {progress}/{total} pagini")
 
                         result = self.open_new_tab_and_download(url)
 
                         if result:
-                            print(f"✅ Issue parțial finalizat")
+                            print(f" Issue parțial finalizat")
                         else:
-                            print(f"⚠ Issue parțial nu s-a finalizat")
+                            print(f" Issue parțial nu s-a finalizat")
+
+                        if self.state.get("download_no_file_stop", False):
+                            print(" Oprire de siguranta dupa partial: nu continui cu alte download-uri.")
+                            return False
 
                         time.sleep(2)
 
                     # După ce procesezi parțiale, revino la început pentru re-verificare
                     continue
 
-                print("✅ Nu există issue-uri parțiale - continui cu colecțiile")
+                print(" Nu există issue-uri parțiale - continui cu colecțiile")
 
                 # === PRIORITATE 2: Colecția principală ===
                 if not self.state.get("main_collection_completed", False):
-                    print(f"\n📚 Procesez colecția principală: {self.main_collection_url}")
+                    print(f"\n Procesez colecția principală: {self.main_collection_url}")
 
                     main_completed = self.run_collection(self.main_collection_url)
 
+                    if self.state.get("download_no_file_stop", False):
+                        print(" Oprire de siguranta in colectia principala.")
+                        return False
+
                     if self.state.get("daily_limit_hit", False):
-                        print("⚠ Limită zilnică în colecția principală")
+                        print(" Limită zilnică în colecția principală")
                         return True
 
                     if main_completed:
-                        print("✅ Colecția principală completă!")
+                        print(" Colecția principală completă!")
+                        if self.main_collection_url.rstrip("/") in [u.rstrip("/") for u in ADDITIONAL_COLLECTIONS]:
+                            self.mark_collection_complete(self.main_collection_url)
+                            self.state["current_additional_collection_index"] = self.get_first_unfinished_additional_collection_index()
                         self.state["main_collection_completed"] = True
                         self._save_state()
                         # Revino la început pentru a verifica parțiale
                         continue
                     else:
-                        print("🔄 Colecția principală incompletă - reiau mai târziu")
+                        print(" Colecția principală incompletă - reiau mai târziu")
                         # Revino la început pentru a verifica parțiale
                         continue
 
-                print("✅ Colecția principală completă - trec la adiționale")
+                print(" Colecția principală completă - trec la adiționale")
 
                 # === PRIORITATE 3: Colecții adiționale ===
                 if self.remaining_quota() > 0 and not self.state.get("daily_limit_hit", False):
-                    print(f"\n📚 Procesez colecții adiționale")
+                    print(f"\n Procesez colecții adiționale")
 
                     all_additional_complete = self.run_additional_collections()
 
+                    if self.state.get("download_no_file_stop", False):
+                        print(" Oprire de siguranta in colectiile aditionale.")
+                        return False
+
                     if all_additional_complete:
-                        print("🎉 TOATE colecțiile procesate!")
+                        print(" TOATE colecțiile procesate!")
                         return True
                     else:
-                        print("🔄 Mai sunt colecții de procesat")
+                        print(" Mai sunt colecții de procesat")
                         # Revino la început pentru a verifica parțiale
                         continue
 
                 # Dacă ajungi aici, verifică o ultimă dată
                 final_partials = self.get_pending_partial_issues()
                 if not final_partials:
-                    print("✅ Nu mai există issue-uri parțiale - terminat!")
+                    print(" Nu mai există issue-uri parțiale - terminat!")
                     break
 
             if iteration >= max_iterations:
-                print("⚠ Limită iterații atinsă - posibilă buclă infinită")
+                print(" Limită iterații atinsă - posibilă buclă infinită")
 
-            print("✅ Toate operațiunile finalizate")
+            print(" Toate operațiunile finalizate")
             self._finalize_session()
             return True
 
         except KeyboardInterrupt:
-            print("\n\n⚠ Intervenție manuală")
+            print("\n\n Intervenție manuală")
             return False
         except Exception as e:
-            print(f"\n❌ Eroare: {e}")
+            print(f"\n Eroare: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -7747,8 +8507,8 @@ class ChromePDFDownloader:
                     # IMPORTANT: Pentru a păstra Firefox deschis, trebuie să folosim un workaround
                     # Firefox se închide automat când geckodriver se oprește (proces copil)
                     # Soluția: Nu apelăm quit() și lăsăm procesul Firefox să continue
-                    print("✅ Firefox rămâne deschis după oprirea scriptului")
-                    print("💡 NOTĂ: Dacă Firefox se închide, pornește-l manual cu start_firefox.bat")
+                    print(" Firefox rămâne deschis după oprirea scriptului")
+                    print(" NOTĂ: Dacă Firefox se închide, pornește-l manual cu start_firefox.bat")
 
                     # Workaround: Nu apelăm quit() - doar setăm driver-ul la None
                     # Firefox va continua să ruleze chiar dacă geckodriver se oprește
@@ -7760,7 +8520,7 @@ class ChromePDFDownloader:
                     # dar Firefox procesul ar trebui să rămână activ
                     self.driver = None
                 except Exception as e:
-                    print(f"⚠ Eroare la deconectarea WebDriver: {e}")
+                    print(f" Eroare la deconectarea WebDriver: {e}")
                     # Chiar dacă apare o eroare, nu închidem Firefox
                     pass
 
@@ -7771,10 +8531,10 @@ class ChromePDFDownloader:
 
         if self.driver:
             if self.attached_existing:
-                print("🔖 Am păstrat sesiunea Firefox existentă deschisă (nu fac quit).")
+                print(" Am păstrat sesiunea Firefox existentă deschisă (nu fac quit).")
             else:
                 # NU închide Firefox - lasă-l deschis pentru utilizator
-                print("✅ Firefox rămâne deschis după oprirea scriptului")
+                print(" Firefox rămâne deschis după oprirea scriptului")
                 # try:
                 #     self.driver.quit()  # COMENTAT - Firefox rămâne deschis
                 # except Exception:
@@ -7783,22 +8543,22 @@ class ChromePDFDownloader:
     def close_firefox_for_daily_limit(self):
         """Inchide Firefox-ul de automatizare cand Arcanum a atins limita zilnica."""
         if not self.driver:
-            print("ℹ️ Limita zilnica atinsa; nu exista driver Firefox activ de inchis.")
+            print("INFO: Limita zilnica atinsa; nu exista driver Firefox activ de inchis.")
             self.wait = None
             return
 
         if self.attached_existing:
-            print("🔖 Limita zilnica atinsa, dar driverul e atasat la o sesiune existenta; nu o inchid.")
+            print(" Limita zilnica atinsa, dar driverul e atasat la o sesiune existenta; nu o inchid.")
             self.driver = None
             self.wait = None
             return
 
-        print("🛑 Limita zilnica atinsa - inchid instanta Firefox de automatizare.")
+        print(" Limita zilnica atinsa - inchid instanta Firefox de automatizare.")
         try:
             self.driver.quit()
-            print("✅ Firefox-ul de automatizare a fost inchis.")
+            print(" Firefox-ul de automatizare a fost inchis.")
         except Exception as e:
-            print(f"⚠ Nu am putut inchide Firefox prin driver.quit(): {e}")
+            print(f" Nu am putut inchide Firefox prin driver.quit(): {e}")
         finally:
             self.driver = None
             self.wait = None
@@ -7820,47 +8580,47 @@ def main():
     # ca la rulare din Task Scheduler profilul să fie liber înainte de a deschide instanța nouă
     kill_firefox_and_geckodriver_at_start()
 
-    print("🚀 PORNIRE SCRIPT - ANALIZA INIȚIALĂ")
+    print(" PORNIRE SCRIPT - ANALIZA INIȚIALĂ")
     print("=" * 70)
 
     # PASUL 1: Creează downloader temporar pentru analiza stării
     temp_downloader = ChromePDFDownloader("temp", download_dir="G:\\", batch_size=50)
 
     # PASUL 2: Analizează starea curentă
-    print("🔍 ANALIZA STĂRII CURENTE:")
+    print(" ANALIZA STĂRII CURENTE:")
     current_state = temp_downloader.state
 
     main_completed = current_state.get("main_collection_completed", False)
     current_index = current_state.get("current_additional_collection_index", 0)
     total_issues = len(current_state.get("downloaded_issues", []))
 
-    print(f"   📊 Total issues în state: {total_issues}")
-    print(f"   🏁 Main collection completed: {main_completed}")
-    print(f"   🔢 Current additional index: {current_index}")
+    print(f"    Total issues în state: {total_issues}")
+    print(f"    Main collection completed: {main_completed}")
+    print(f"    Current additional index: {current_index}")
 
     # PASUL 3: Verifică issue-urile parțiale (PRIORITATE ABSOLUTĂ)
-    print(f"\n🎯 VERIFICARE ISSUE-URI PARȚIALE:")
+    print(f"\n VERIFICARE ISSUE-URI PARȚIALE:")
     pending_partials = temp_downloader.get_pending_partial_issues()
 
     if pending_partials:
-        print(f"🚨 GĂSITE {len(pending_partials)} ISSUE-URI PARȚIALE!")
-        print(f"🔥 PRIORITATE ABSOLUTĂ - acestea trebuie continuate:")
+        print(f" GĂSITE {len(pending_partials)} ISSUE-URI PARȚIALE!")
+        print(f" PRIORITATE ABSOLUTĂ - acestea trebuie continuate:")
 
         for item in pending_partials:
             url = item.get("url", "")
             progress = item.get("last_successful_segment_end", 0)
             total = item.get("total_pages", 0)
             title = item.get("title", "")
-            print(f"   🔄 {title}")
-            print(f"      📍 {url}")
-            print(f"      🎯 CONTINUĂ de la pagina {progress + 1} (progres: {progress}/{total})")
+            print(f"    {title}")
+            print(f"       {url}")
+            print(f"       CONTINUĂ de la pagina {progress + 1} (progres: {progress}/{total})")
 
-        print(f"\n✅ VA PROCESA AUTOMAT issue-urile parțiale primul!")
+        print(f"\n VA PROCESA AUTOMAT issue-urile parțiale primul!")
     else:
-        print(f"✅ Nu există issue-uri parțiale de procesat")
+        print(f" Nu există issue-uri parțiale de procesat")
 
     # PASUL 4: Analizează progresul StudiiSiCercetariMecanicaSiAplicata
-    print(f"\n📚 ANALIZA COLECȚIEI StudiiSiCercetariMecanicaSiAplicata:")
+    print(f"\n ANALIZA COLECȚIEI StudiiSiCercetariMecanicaSiAplicata:")
 
     # Lista completă a anilor disponibili din HTML (1954-1992, minus 1964)
     expected_years = []
@@ -7888,39 +8648,39 @@ def main():
     partial_years.sort()
     missing_years = [year for year in expected_years if year not in downloaded_years and year not in partial_years]
 
-    print(f"   📅 Ani disponibili: {len(expected_years)} (1954-1992, minus 1964)")
-    print(f"   ✅ Ani descărcați: {len(downloaded_years)} - {downloaded_years}")
-    print(f"   🔄 Ani parțiali: {len(partial_years)} - {partial_years}")
-    print(f"   ❌ Ani lipsă: {len(missing_years)} - {missing_years[:10]}{'...' if len(missing_years) > 10 else ''}")
+    print(f"    Ani disponibili: {len(expected_years)} (1954-1992, minus 1964)")
+    print(f"    Ani descărcați: {len(downloaded_years)} - {downloaded_years}")
+    print(f"    Ani parțiali: {len(partial_years)} - {partial_years}")
+    print(f"    Ani lipsă: {len(missing_years)} - {missing_years[:10]}{'...' if len(missing_years) > 10 else ''}")
 
     # PASUL 5: Determină strategia
     total_remaining = len(partial_years) + len(missing_years)
 
     if total_remaining > 0:
-        print(f"\n🎯 STRATEGIA DE PROCESARE:")
-        print(f"   🔥 RĂMÂN {total_remaining} ani de procesat din StudiiSiCercetariMecanicaSiAplicata")
-        print(f"   🚫 NU se trece la alte colecții până nu se termină aceasta!")
-        print(f"   📈 Progres: {len(downloaded_years)}/{len(expected_years)} ani completați ({len(downloaded_years)/len(expected_years)*100:.1f}%)")
+        print(f"\n STRATEGIA DE PROCESARE:")
+        print(f"    RĂMÂN {total_remaining} ani de procesat din StudiiSiCercetariMecanicaSiAplicata")
+        print(f"    NU se trece la alte colecții până nu se termină aceasta!")
+        print(f"    Progres: {len(downloaded_years)}/{len(expected_years)} ani completați ({len(downloaded_years)/len(expected_years)*100:.1f}%)")
     else:
-        print(f"\n✅ StudiiSiCercetariMecanicaSiAplicata este COMPLET!")
-        print(f"   🎯 Va trece la următoarea colecție din ADDITIONAL_COLLECTIONS")
+        print(f"\n StudiiSiCercetariMecanicaSiAplicata este COMPLET!")
+        print(f"    Va trece la următoarea colecție din ADDITIONAL_COLLECTIONS")
 
     # PASUL 6: Nu mai fortam resetarea pentru Studii in rularea normala.
     # Partialele active si current_additional_collection_index dicteaza prioritatea.
     if False and total_remaining > 0:
-        print(f"\n🔧 RESETEZ STAREA pentru a continua cu StudiiSiCercetariMecanicaSiAplicata:")
+        print(f"\n RESETEZ STAREA pentru a continua cu StudiiSiCercetariMecanicaSiAplicata:")
 
         # Resetează flag-urile greșite
         if main_completed:
-            print(f"   🔄 Resetez main_collection_completed: True → False")
+            print(f"    Resetez main_collection_completed: True -> False")
             temp_downloader.state["main_collection_completed"] = False
 
         if current_index > 1:  # StudiiSiCercetariMecanicaSiAplicata e pe index 1
-            print(f"   🔄 Resetez current_additional_collection_index: {current_index} → 1")
+            print(f"    Resetez current_additional_collection_index: {current_index} -> 1")
             temp_downloader.state["current_additional_collection_index"] = 1
 
         temp_downloader._save_state()
-        print(f"   ✅ Starea resetată pentru a continua cu StudiiSiCercetariMecanicaSiAplicata")
+        print(f"    Starea resetată pentru a continua cu StudiiSiCercetariMecanicaSiAplicata")
 
     # Daca exista un issue partial, pozitioneaza indexul pe colectia lui.
     # Exemplu: BuletInstPolitehIasi_6_1972 -> colectia BuletInstPolitehIasi_6.
@@ -7938,8 +8698,12 @@ def main():
                     current_index = idx
                 break
 
+    # Respecta ordinea din ADDITIONAL_COLLECTIONS: prima colectie nemarcata complet
+    # are prioritate fata de indexul salvat in state.json.
+    current_index = temp_downloader.enforce_additional_collections_order()
+
     # PASUL 7: Setează URL-ul colecției principale (sare peste StudiiSiCercetariMecanicaSiAplicata)
-    print(f"\n🎯 SELECTARE COLECȚIE PRINCIPALĂ:")
+    print(f"\n SELECTARE COLECȚIE PRINCIPALĂ:")
 
     # Găsește prima colecție din ADDITIONAL_COLLECTIONS care NU e în skip list
     main_collection_url = None
@@ -7948,22 +8712,22 @@ def main():
         normalized = collection_url.rstrip('/')
         if normalized not in temp_downloader.dynamic_skip_urls:
             main_collection_url = collection_url
-            print(f"✅ SELECTAT: {collection_url}")
+            print(f" SELECTAT: {collection_url}")
             break
         else:
-            print(f"⏭️ SKIP (complet descărcat): {collection_url}")
+            print(f"SKIP (complet descărcat): {collection_url}")
 
     if not main_collection_url:
-        print("❌ TOATE colecțiile au fost descărcate!")
+        print(" TOATE colecțiile au fost descărcate!")
         sys.exit(0)
 
-    print(f"\n🚀 ÎNCEPE PROCESAREA:")
-    print(f"📍 URL principal: {main_collection_url}")
-    print(f"📁 Director descărcare: G:\\")
-    print(f"📦 Batch size: 50 pagini per segment")
+    print(f"\n ÎNCEPE PROCESAREA:")
+    print(f" URL principal: {main_collection_url}")
+    print(f" Director descărcare: G:\\")
+    print(f" Batch size: 50 pagini per segment")
 
     if pending_partials:
-        print(f"⚡ Va începe cu {len(pending_partials)} issue-uri parțiale")
+        print(f" Va începe cu {len(pending_partials)} issue-uri parțiale")
 
     print("=" * 70)
 
@@ -7975,20 +8739,20 @@ def main():
             batch_size=50
         )
 
-        print("🎯 ÎNCEPE EXECUȚIA PRINCIPALĂ...")
+        print(" ÎNCEPE EXECUȚIA PRINCIPALĂ...")
         success = downloader.run()
 
         if success:
-            print("\n✅ EXECUȚIE FINALIZATĂ CU SUCCES!")
+            print("\n EXECUȚIE FINALIZATĂ CU SUCCES!")
         else:
-            print("\n⚠ EXECUȚIE FINALIZATĂ CU PROBLEME!")
+            print("\n EXECUȚIE FINALIZATĂ CU PROBLEME!")
             sys.exit(1)
 
     except KeyboardInterrupt:
-        print("\n\n⚠ OPRIRE MANUALĂ - Progresul a fost salvat")
+        print("\n\n OPRIRE MANUALĂ - Progresul a fost salvat")
         sys.exit(0)
     except Exception as e:
-        print(f"\n❌ EROARE FATALĂ în main(): {e}")
+        print(f"\n EROARE FATALĂ în main(): {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -8000,22 +8764,22 @@ def kill_all_firefox_instances():
     IMPORTANT: Foloseste EXCLUSIV PowerShell (tasklist si taskkill se BLOCHEAZA pe acest PC).
     """
     try:
-        print("ℹ️ NU inchid Firefox (folosim copie de profil). Firefox-ul tau ramane deschis.")
+        print("INFO: NU inchid Firefox (folosim copie de profil). Firefox-ul tau ramane deschis.")
 
         gecko_count = _ps_get_process_count('geckodriver')
         if gecko_count > 0:
-            print("🔄 Geckodriver detectat rulând - forțez închiderea...")
+            print(" Geckodriver detectat rulând - forțez închiderea...")
             _ps_stop_process('geckodriver')
             time.sleep(2)
-            print("✅ Geckodriver închis.")
+            print(" Geckodriver închis.")
 
         # NU mai atingem lock-urile profilului real (Firefox-ul tau il foloseste).
 
         time.sleep(2)
-        print("✅ Curățare completă - Firefox poate porni fără conflicte.")
+        print(" Curățare completă - Firefox poate porni fără conflicte.")
 
     except Exception as e:
-        print(f"⚠️ Eroare la închiderea Firefox: {e} - se continuă oricum...")
+        print(f" Eroare la închiderea Firefox: {e} - se continuă oricum...")
 
 
 SHARED_RUNTIME_ROOT = r"G:\_arcanum_capture_metoda1"
@@ -8109,9 +8873,9 @@ def write_big_script_lock():
         os.makedirs(os.path.dirname(BIG_LOCK), exist_ok=True)
         with open(BIG_LOCK, "w", encoding="utf-8") as _lf:
             _lf.write(str(os.getpid()))
-        print(f"🔒 Lock scris (scriptul mare ruleaza): {BIG_LOCK}")
+        print(f" Lock scris (scriptul mare ruleaza): {BIG_LOCK}")
     except Exception as _le:
-        print(f"⚠️ Nu am putut scrie lock-ul: {_le}")
+        print(f" Nu am putut scrie lock-ul: {_le}")
 
 
 def remove_big_script_lock():
@@ -8120,7 +8884,7 @@ def remove_big_script_lock():
             pid = _read_lock_pid(BIG_LOCK)
             if not pid or pid == os.getpid():
                 os.remove(BIG_LOCK)
-                print("🔓 Lock sters (scriptul mare a terminat).")
+                print(" Lock sters (scriptul mare a terminat).")
     except Exception:
         pass
 
@@ -8134,7 +8898,7 @@ if __name__ == "__main__":
 
         # PASUL 0: doar geckodriver orfan (NU mai inchide Firefox - vezi kill_all_firefox_instances)
         print("=" * 60)
-        print("🔧 PASUL 0: Curatare geckodriver orfan...")
+        print(" PASUL 0: Curatare geckodriver orfan...")
         print("=" * 60)
         kill_all_firefox_instances()
         print("=" * 60)
@@ -8143,7 +8907,7 @@ if __name__ == "__main__":
         # PASUL 1: Rulează scriptul principal
         main()
     except Exception as e:
-        print(f"❌ Eroare fatală în __main__: {e}")
+        print(f" Eroare fatală în __main__: {e}")
         sys.exit(1)
     finally:
         remove_big_script_lock()
