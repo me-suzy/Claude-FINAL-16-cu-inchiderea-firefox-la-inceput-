@@ -119,6 +119,8 @@ def kill_edge_and_driver_at_start():
         if drv_count > 0:
             _ps_stop_process('msedgedriver')
             time.sleep(2)
+        # si instantele Edge agatate pe profilul de automatizare (nu Edge-ul tau)
+        _kill_automation_edge()
         print(" [LA PORNIRE] Gata.")
     except Exception as e:
         print(f" [LA PORNIRE] Eroare: {e}")
@@ -155,6 +157,40 @@ EDGE_QUIET_FLAGS = [
     "--log-level=3",
     "--disable-logging",
 ]
+
+
+def _kill_automation_edge(asteptare=3):
+    """
+    Inchide DOAR instantele Edge pornite pe profilul de automatizare.
+    Edge-ul tau normal are alt user-data-dir, deci NU este atins.
+
+    Fara asta, un Edge ramas agatat din rularea anterioara tine profilul ocupat;
+    orice pornire noua afiseaza "Opening in existing browser session." si moare
+    instant, iar scriptul intra in bucla de reporniri cu zeci de ferestre.
+    """
+    marcaj = os.path.basename(EDGE_PROFILE_DIR)
+    try:
+        CREATE_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+        ps_cmd = (
+            "$p = @(Get-CimInstance Win32_Process | Where-Object { "
+            "$_.Name -eq 'msedge.exe' -and $_.CommandLine -like '*" + marcaj + "*' }); "
+            "$p | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; "
+            "$p.Count"
+        )
+        r = subprocess.run(
+            ['powershell', '-NoProfile', '-NonInteractive', '-Command', ps_cmd],
+            capture_output=True, text=True, timeout=25,
+            creationflags=CREATE_NO_WINDOW if sys.platform == 'win32' else 0,
+        )
+        nr = (r.stdout or '').strip()
+        nr = int(nr) if nr.isdigit() else 0
+        if nr > 0:
+            print(f" Am inchis {nr} instante Edge ramase pe profilul de automatizare.")
+            time.sleep(asteptare)
+        return nr
+    except Exception as e:
+        print(f" Nu am putut verifica instantele Edge de automatizare: {e}")
+        return 0
 
 
 def _ensure_edge_profile():
@@ -433,16 +469,16 @@ ADDITIONAL_COLLECTIONS = [
     # "https://adt.arcanum.com/ro/collection/Oltul/?decade=1970#collection-contents",
     # "https://adt.arcanum.com/ro/collection/RevistaDeFilozofie/",
     # "https://adt.arcanum.com/ro/collection/Dreptul/",
-    "https://adt.arcanum.com/ro/collection/MitropoliaArdealului/",
-    "https://adt.arcanum.com/ro/collection/StudiiSiMaterialeDeIstorieContemporana/",
-    "https://adt.arcanum.com/ro/collection/Constructorul/",
-    "https://adt.arcanum.com/ro/collection/Constructorul/?decade=1960#collection-contents",
-    "https://adt.arcanum.com/ro/collection/Constructorul/?decade=1970#collection-contents",
-    "https://adt.arcanum.com/ro/collection/AnaleleMinelorDinRomania/",
-    "https://adt.arcanum.com/ro/collection/AnaleleEconomiceSiStatistice/",
-    "https://adt.arcanum.com/ro/collection/Pontica/",
-    "https://adt.arcanum.com/ro/collection/SociologieRomaneasca/",
-    "https://adt.arcanum.com/ro/collection/DocumentePrivindIstoriaRominiei/",
+    # "https://adt.arcanum.com/ro/collection/MitropoliaArdealului/",
+    # "https://adt.arcanum.com/ro/collection/StudiiSiMaterialeDeIstorieContemporana/",
+    # "https://adt.arcanum.com/ro/collection/Constructorul/",
+    # "https://adt.arcanum.com/ro/collection/Constructorul/?decade=1960#collection-contents",
+    # "https://adt.arcanum.com/ro/collection/Constructorul/?decade=1970#collection-contents",
+    # "https://adt.arcanum.com/ro/collection/AnaleleMinelorDinRomania/",
+    # "https://adt.arcanum.com/ro/collection/AnaleleEconomiceSiStatistice/",
+    # "https://adt.arcanum.com/ro/collection/Pontica/",
+    # "https://adt.arcanum.com/ro/collection/SociologieRomaneasca/",
+    # "https://adt.arcanum.com/ro/collection/DocumentePrivindIstoriaRominiei/",
     "https://adt.arcanum.com/ro/collection/BuletinulMunciiSiAsigurarii/",
     "https://adt.arcanum.com/ro/collection/StudiiSiMaterialeDeIstorieMedie/",
     "https://adt.arcanum.com/ro/collection/FoaiaNoastra/",
@@ -3723,6 +3759,9 @@ class ChromePDFDownloader:
             # Eliberam doar driverul orfan; Edge-ul normal nu e atins.
             self.kill_existing_edge_driver()
 
+            # Profilul trebuie sa fie LIBER, altfel Edge-ul nou se preda celui vechi.
+            _kill_automation_edge()
+
             profile_dir = _ensure_edge_profile()
             print(f" Profil Edge dedicat: {profile_dir}")
 
@@ -3763,6 +3802,8 @@ class ChromePDFDownloader:
                 edge_service = None
                 try:
                     if _att > 1:
+                        # la retry, profilul poate fi tinut de o instanta pe jumatate pornita
+                        _kill_automation_edge(asteptare=2)
                         time.sleep(5)
                         print(f" Reincerc pornirea Edge (incercarea {_att}/4)...")
 
@@ -4035,6 +4076,27 @@ class ChromePDFDownloader:
             print(f" Eroare la inchiderea bannerului de cookies: {e}")
             return False
 
+    def switch_to_surviving_window(self):
+        """
+        Fereastra activa a disparut ("no such window"), dar sesiunea WebDriver
+        poate fi inca valida. Daca mai exista ferestre, trecem pe ultima si
+        continuam. Returneaza True doar daca am reusit sa ne pozitionam pe una.
+        """
+        try:
+            if not hasattr(self, "driver") or not self.driver:
+                return False
+
+            handles = self.driver.window_handles
+            if not handles:
+                return False
+
+            self.driver.switch_to.window(handles[-1])
+            _ = self.driver.current_url
+            print(f" Fereastra activa disparuse; am trecut pe una din cele {len(handles)} ramase.")
+            return True
+        except Exception:
+            return False
+
     def navigate_to_page(self, url):
         try:
             # VERIFICĂ ÎNTÂI DACĂ BROWSER-UL MAI EXISTĂ
@@ -4047,13 +4109,19 @@ class ChromePDFDownloader:
                 # Browser-ul s-a închis sau nu funcționează
                 print(f" Browser închis sau nefuncțional ({e}), încerc reconectare...")
 
-                # Reîncearcă să creeze driver-ul
-                # setup_edge_driver() va închide automat orice Edge existent
-                print(" Repornesc Edge pentru reconectare...")
-                if not self.setup_chrome_driver(browser="edge"):
-                    print(" Nu pot reconecta browser-ul")
-                    return False
-                print(" Edge repornit cu succes!")
+                # In Edge, fereastra din care a pornit un download se poate inchide
+                # singura. Daca mai exista alte ferestre, trecem pe una din ele -
+                # e mult mai ieftin decat sa repornim tot browserul.
+                if self.switch_to_surviving_window():
+                    print(" Continui in fereastra ramasa, fara repornire.")
+                else:
+                    # Reîncearcă să creeze driver-ul
+                    # setup_edge_driver() va închide automat orice Edge existent
+                    print(" Repornesc Edge pentru reconectare...")
+                    if not self.setup_chrome_driver(browser="edge"):
+                        print(" Nu pot reconecta browser-ul")
+                        return False
+                    print(" Edge repornit cu succes!")
 
             print(f" Navighez către: {url}")
             self.driver.get(url)
@@ -5715,12 +5783,12 @@ class ChromePDFDownloader:
 
                     if not current_username:
                         username_field.clear()
-                        username_field.send_keys("YOUR-EMAIL@gmail.com")
+                        username_field.send_keys("YOUR EMAIL")
                         print(" Username completat")
 
                     if not current_password:
                         password_field.clear()
-                        password_field.send_keys("YOUR-PASSWORD")
+                        password_field.send_keys("YOUR PASS")
                         print(" Parolă completată")
 
                 # PASUL 5: Așteaptă puțin și apoi submit
